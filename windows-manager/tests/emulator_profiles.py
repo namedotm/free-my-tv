@@ -59,17 +59,21 @@ def main():
     serials=command(['adb','devices']).splitlines()[1:]
     assert len([s for s in serials if s.strip()])==1 and any(s.startswith('emulator-') for s in serials),'Disposable emulator only'
     d=Emulator()
-    home=d.shell('cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME')
+    def current_home():
+        # --brief also includes resolver metadata; compare the actual component.
+        return d.shell('cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME').splitlines()[-1].strip()
+    home=current_home()
     # Model a TV whose original launcher is already chosen. With no explicit default,
     # installing any second HOME candidate changes Android's resolver itself.
-    original_home=home.splitlines()[-1].strip()
+    original_home=home
     assert '/' in original_home and 'ResolverActivity' not in original_home,home
     d.shell('cmd','package','set-home-activity','--user','0',original_home)
-    home=d.shell('cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME')
+    home=current_home()
     access=d.shell('settings','get','secure','enabled_accessibility_services')
     artifact=Path(__file__).resolve().parents[2]/'artifacts/FreeMyTV-profiles.apk'
     command(['adb','install','-r',artifact])
-    assert home==d.shell('cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME'),'APK install changed the chosen Home'
+    installed_home=current_home()
+    assert home==installed_home,('APK install changed the chosen Home',home,installed_home)
     before=profiles.export(d)
     profile={'schema':1,'kind':'free-my-tv-ui','settings':{'language':'ru','theme':'dark','sounds':False,'shelf':['io.freemytv'],'topButtons':['network','settings']}}
     actual=profiles.apply(d,profile)
@@ -85,7 +89,8 @@ def main():
     restored=profiles.restore(d)
     assert restored==before,(restored,before)
     assert profiles.restore(d)==before,'Restore must be idempotent'
-    assert home==d.shell('cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME'),'Home role changed'
+    restored_home=current_home()
+    assert home==restored_home,('UI profile changed the chosen Home',home,restored_home)
     assert access==d.shell('settings','get','secure','enabled_accessibility_services'),'Accessibility changed'
     probe_other_uid(Path(os.environ['ANDROID_HOME']))
     print('Real Android profile export/apply/validation/restore passed; Home and accessibility unchanged.')
