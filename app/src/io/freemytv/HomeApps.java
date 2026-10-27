@@ -57,7 +57,7 @@ final class HomeApps {
 
     static final int APP = 0, LIVE_TV = 1, INPUT = 2, ALL_APPS = 3, SETTINGS = 4, ANDROID_SETTINGS = 5, DEVICE = 6;
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
-    static final int INPUTS = 7;
+    static final int INPUTS = 7, NETWORK_SETTINGS = 8;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -241,8 +241,8 @@ final class HomeApps {
 
     // MARK: - Top buttons (the round ones at the top right)
 
-    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_SETTINGS = "settings";
-    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_SETTINGS));
+    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_SETTINGS = "settings", TOP_NETWORK = "network";
+    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_NETWORK, TOP_SETTINGS));
     static final int MAX_TOP = TOP_DEFAULT.size();
 
     /** The keys of the top buttons, in order (Settings > Top Buttons; by default Live TV, HDMI Inputs, Settings). */
@@ -265,6 +265,7 @@ final class HomeApps {
         switch (key) {
             case TOP_LIVE: return action(LIVE_TV, TOP_LIVE, Ui.tr("light|Live TV"), "live_tv");
             case TOP_INPUTS: return action(INPUTS, TOP_INPUTS, Ui.tr("HDMI Inputs"), "hdmi");
+            case TOP_NETWORK: return action(NETWORK_SETTINGS, TOP_NETWORK, Ui.tr("Network settings"), "network");
             default: return action(SETTINGS, TOP_SETTINGS, Ui.tr("light|Settings"), "settings");
         }
     }
@@ -567,6 +568,8 @@ final class HomeApps {
             case SETTINGS:
                 intent = new Intent().setComponent(new ComponentName(a, SettingsActivity.class));
                 break;
+            case NETWORK_SETTINGS:
+                return openNetworkSettings(a, options);
             case ANDROID_SETTINGS:
                 intent = new Intent(Settings.ACTION_SETTINGS);
                 break;
@@ -593,6 +596,22 @@ final class HomeApps {
                 return false;
             }
         }
+    }
+
+    /** Try TV network settings first (including Ethernet), then portable Android fallbacks. */
+    private static boolean openNetworkSettings(Context c, android.os.Bundle options) {
+        String[] actions = {"android.settings.NETWORK_SETTINGS", Settings.ACTION_WIRELESS_SETTINGS,
+                Settings.ACTION_WIFI_SETTINGS, Settings.ACTION_SETTINGS};
+        for (String action : actions) {
+            try {
+                c.startActivity(new Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), options);
+                return true;
+            } catch (ActivityNotFoundException | SecurityException e) {
+                // Some firmware advertises settings screens that third-party apps cannot open.
+                AppLog.w("couldn't open " + action + ": " + e.getClass().getSimpleName());
+            }
+        }
+        return false; // HomeView shows the existing translated error toast.
     }
 
     /**

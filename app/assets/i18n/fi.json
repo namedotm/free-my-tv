@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "{time} jäljellä",
  "{version} is out: build it again": "{version} on julkaistu: rakenna se uudelleen",
- "← → to move · OK to drop · Back to cancel": "← → siirrä · OK pudota · Takaisin peruuta"
+ "← → to move · OK to drop · Back to cancel": "← → siirrä · OK pudota · Takaisin peruuta",
+ "Network settings": "Network settings"
 }

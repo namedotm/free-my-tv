@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "残り{time}",
  "{version} is out: build it again": "{version} が出ました：もう一度ビルドしてください",
- "← → to move · OK to drop · Back to cancel": "← → 移動 · OK 配置 · 戻る キャンセル"
+ "← → to move · OK to drop · Back to cancel": "← → 移動 · OK 配置 · 戻る キャンセル",
+ "Network settings": "Network settings"
 }

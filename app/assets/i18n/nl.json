@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "nog {time}",
  "{version} is out: build it again": "{version} is uit: bouw hem opnieuw",
- "← → to move · OK to drop · Back to cancel": "← → verplaatsen · OK neerzetten · Terug annuleren"
+ "← → to move · OK to drop · Back to cancel": "← → verplaatsen · OK neerzetten · Terug annuleren",
+ "Network settings": "Network settings"
 }
