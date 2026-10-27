@@ -302,5 +302,6 @@
  "{n} ms": "{n} мс",
  "{time} left": "осталось {time}",
  "{version} is out: build it again": "Вышла {version}: соберите заново",
- "← → to move · OK to drop · Back to cancel": "← → — переместить · OK — оставить · Назад — отмена"
+ "← → to move · OK to drop · Back to cancel": "← → — переместить · OK — оставить · Назад — отмена",
+ "Network settings": "Настройки сети"
 }

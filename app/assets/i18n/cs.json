@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "zbývá {time}",
  "{version} is out: build it again": "Vyšla verze {version}: sestavte ji znovu",
- "← → to move · OK to drop · Back to cancel": "← → přesunout · OK umístit · Zpět zrušit"
+ "← → to move · OK to drop · Back to cancel": "← → přesunout · OK umístit · Zpět zrušit",
+ "Network settings": "Network settings"
 }

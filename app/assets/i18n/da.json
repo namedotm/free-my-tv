@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "{time} tilbage",
  "{version} is out: build it again": "{version} er ude: byg den igen",
- "← → to move · OK to drop · Back to cancel": "← → flyt · OK slip · Tilbage annuller"
+ "← → to move · OK to drop · Back to cancel": "← → flyt · OK slip · Tilbage annuller",
+ "Network settings": "Network settings"
 }

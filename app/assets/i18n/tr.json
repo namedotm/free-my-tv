@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "{time} kaldı",
  "{version} is out: build it again": "{version} çıktı: yeniden derleyin",
- "← → to move · OK to drop · Back to cancel": "← → taşı · OK bırak · Geri iptal"
+ "← → to move · OK to drop · Back to cancel": "← → taşı · OK bırak · Geri iptal",
+ "Network settings": "Network settings"
 }

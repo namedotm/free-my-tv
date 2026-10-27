@@ -17,3 +17,6 @@ __pycache__/
 # macOS
 .DS_Store
 tools/.i18n-cache.json
+
+# Reviewed test APK published for download
+!/artifacts/FreeMyTV.apk

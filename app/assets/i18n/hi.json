@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "{time} बाकी",
  "{version} is out: build it again": "{version} आ गया है: इसे फिर से बनाएँ",
- "← → to move · OK to drop · Back to cancel": "← → खिसकाएँ · OK छोड़ें · वापस रद्द करें"
+ "← → to move · OK to drop · Back to cancel": "← → खिसकाएँ · OK छोड़ें · वापस रद्द करें",
+ "Network settings": "Network settings"
 }

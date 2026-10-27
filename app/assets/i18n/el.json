@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "απομένουν {time}",
  "{version} is out: build it again": "Βγήκε η {version}: φτιάξτε το ξανά",
- "← → to move · OK to drop · Back to cancel": "← → μετακίνηση · OK τοποθέτηση · Πίσω ακύρωση"
+ "← → to move · OK to drop · Back to cancel": "← → μετακίνηση · OK τοποθέτηση · Πίσω ακύρωση",
+ "Network settings": "Network settings"
 }

@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "còn {time}",
  "{version} is out: build it again": "Đã có {version}: hãy build lại",
- "← → to move · OK to drop · Back to cancel": "← → di chuyển · OK đặt · Quay lại hủy"
+ "← → to move · OK to drop · Back to cancel": "← → di chuyển · OK đặt · Quay lại hủy",
+ "Network settings": "Network settings"
 }

@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "mai sunt {time}",
  "{version} is out: build it again": "A apărut {version}: compilează din nou",
- "← → to move · OK to drop · Back to cancel": "← → mută · OK plasează · Înapoi anulează"
+ "← → to move · OK to drop · Back to cancel": "← → mută · OK plasează · Înapoi anulează",
+ "Network settings": "Network settings"
 }

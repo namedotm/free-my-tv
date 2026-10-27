@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "{time} lagi",
  "{version} is out: build it again": "{version} sudah rilis: build ulang",
- "← → to move · OK to drop · Back to cancel": "← → pindahkan · OK letakkan · Kembali batalkan"
+ "← → to move · OK to drop · Back to cancel": "← → pindahkan · OK letakkan · Kembali batalkan",
+ "Network settings": "Network settings"
 }

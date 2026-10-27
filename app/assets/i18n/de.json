@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "noch {time}",
  "{version} is out: build it again": "{version} ist da: neu bauen",
- "← → to move · OK to drop · Back to cancel": "← → verschieben · OK ablegen · Zurück abbrechen"
+ "← → to move · OK to drop · Back to cancel": "← → verschieben · OK ablegen · Zurück abbrechen",
+ "Network settings": "Network settings"
 }

@@ -302,5 +302,6 @@
  "{n} ms": "{n} ms",
  "{time} left": "เหลือ {time}",
  "{version} is out: build it again": "{version} ออกแล้ว: บิลด์ใหม่อีกครั้ง",
- "← → to move · OK to drop · Back to cancel": "← → ย้าย · OK วาง · ย้อนกลับ ยกเลิก"
+ "← → to move · OK to drop · Back to cancel": "← → ย้าย · OK วาง · ย้อนกลับ ยกเลิก",
+ "Network settings": "Network settings"
 }

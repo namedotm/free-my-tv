@@ -302,5 +302,6 @@
  "{n} ms": "{n} 毫秒",
  "{time} left": "剩餘 {time}",
  "{version} is out: build it again": "{version} 已推出：請重新建置",
- "← → to move · OK to drop · Back to cancel": "按 ← → 移動 · 按 OK 放置 · 按返回取消"
+ "← → to move · OK to drop · Back to cancel": "按 ← → 移動 · 按 OK 放置 · 按返回取消",
+ "Network settings": "Network settings"
 }
