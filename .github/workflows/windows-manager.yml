@@ -30,9 +30,21 @@ jobs:
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
             if($errors.Count){$errors | Format-List;throw "PowerShell parse failed: $path"}
           }
+      - name: Test rollback ownership guards with simulated resources
+        shell: powershell
+        run: '& ./windows-manager/tests/restore-safety.ps1'
       - name: Build downloadable portable bundle
         working-directory: windows-manager
         run: python build_bundle.py
+      - name: Verify bundled portable Python starts and imports the manager
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive -LiteralPath artifacts/XiaomiTVManager-Windows.zip -DestinationPath portable-smoke
+          Push-Location portable-smoke/XiaomiTVManager
+          & ./vendor/python/python.exe -E -s -c "import engine, app, ssl, http.server; assert engine.digest('payload/FreeMyTV.apk')==engine.APK_HASH; print('Portable Python and APK OK')"
+          if($LASTEXITCODE -ne 0){throw 'Bundled runtime failed'}
+          Pop-Location
       - uses: actions/upload-artifact@v4
         with:
           name: XiaomiTVManager-Windows

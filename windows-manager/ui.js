@@ -1,5 +1,7 @@
 'use strict';
-const token = location.hash.slice(1);
+const tokenKey = 'xiaomi-tv-manager-' + location.host;
+const token = location.hash.slice(1) || sessionStorage.getItem(tokenKey) || '';
+if (token) sessionStorage.setItem(tokenKey, token);
 history.replaceState(null, '', '/');
 const $ = id => document.getElementById(id);
 let initialized = false, active = false, pendingSMB = false;

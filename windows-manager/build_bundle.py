@@ -8,7 +8,7 @@ from engine import ROOT, download, digest, extract_zip, APK_HASH, Problem, read_
 
 FILES = ['app.py','engine.py','index.html','style.css','ui.js','SMB.ps1','bootstrap.ps1',
          'START.bat','devices.json','dependencies.json','catalog.json','README-RU.md',
-         'RESEARCH-RU.md','tests/test_manager.py','build_bundle.py']
+         'RESEARCH-RU.md','tests/test_manager.py','tests/restore-safety.ps1','build_bundle.py']
 
 
 def build():
