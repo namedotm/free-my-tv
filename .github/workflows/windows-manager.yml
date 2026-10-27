@@ -1,0 +1,52 @@
+name: Xiaomi TV Manager checks
+on:
+  push:
+    branches: [feature/xiaomi-tv-manager]
+    paths: ['windows-manager/**', '.github/workflows/windows-manager.yml']
+  pull_request:
+    paths: ['windows-manager/**', '.github/workflows/windows-manager.yml']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Unit tests and real APK verifier on Windows (no TV access)
+        working-directory: windows-manager
+        env:
+          TVM_REAL_TOOLS: '1'
+        run: python -m unittest discover -s tests -v
+      - name: Parse Windows PowerShell scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($path in @('windows-manager/bootstrap.ps1','windows-manager/SMB.ps1')) {
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+            if($errors.Count){$errors | Format-List;throw "PowerShell parse failed: $path"}
+          }
+      - name: Test rollback ownership guards with simulated resources
+        shell: powershell
+        run: '& ./windows-manager/tests/restore-safety.ps1'
+      - name: Build downloadable portable bundle
+        working-directory: windows-manager
+        run: python build_bundle.py
+      - name: Verify bundled portable Python starts and imports the manager
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive -LiteralPath artifacts/XiaomiTVManager-Windows.zip -DestinationPath portable-smoke
+          Push-Location portable-smoke/XiaomiTVManager
+          & ./vendor/python/python.exe -E -s -c "import engine, app, ssl, http.server; assert engine.digest('payload/FreeMyTV.apk')==engine.APK_HASH; print('Portable Python and APK OK')"
+          if($LASTEXITCODE -ne 0){throw 'Bundled runtime failed'}
+          Pop-Location
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XiaomiTVManager-Windows
+          path: artifacts/XiaomiTVManager-Windows.zip
+          retention-days: 30

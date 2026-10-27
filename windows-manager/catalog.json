@@ -1,0 +1,106 @@
+{
+  "reviewed": "2026-10-27",
+  "apps": {
+    "freemytv": {
+      "label": "Free My TV",
+      "package": "io.freemytv",
+      "certificate": "8da630acb15da56191213ac858449ef5ee5908332d52b8774d52ad11ea3ec99c",
+      "variants": {
+        "universal": {
+          "url": "https://raw.githubusercontent.com/namedotm/free-my-tv/09fefd8e7e7737912eb4a751729b5498368df23e/artifacts/FreeMyTV.apk",
+          "sha256": "e15a7b9f0fce46ff90c6fd7d23f41b1689c6eaed755a4a50099096b2c36e8c04"
+        }
+      }
+    },
+    "smarttube": {
+      "label": "SmartTube",
+      "package": "org.smarttube.stable",
+      "certificate": "109735aa24fe85e2e1623ebb3b1ecc4bf4263f4c6374e4411d646bfa2eda482a",
+      "variants": {
+        "arm64-v8a": {
+          "url": "https://github.com/yuliskov/SmartTube/releases/download/32.68s/SmartTube_stable_32.68_arm64-v8a.apk",
+          "sha256": "0a3d3f024eae66b8468f75fe85ab421169177f5ea1223a5d097d1dc9e1c84cf3"
+        },
+        "armeabi-v7a": {
+          "url": "https://github.com/yuliskov/SmartTube/releases/download/32.68s/SmartTube_stable_32.68_armeabi-v7a.apk",
+          "sha256": "2130b23b17ed5cfd324baec81750a2be22059212b6ee17449f21cae2cb3a60d9"
+        },
+        "universal": {
+          "url": "https://github.com/yuliskov/SmartTube/releases/download/32.68s/SmartTube_stable_32.68_universal.apk",
+          "sha256": "45a36e62110bcb866527ba8e9ab876f4122e1143647bbd0a97362d13803f6b94"
+        },
+        "x86": {
+          "url": "https://github.com/yuliskov/SmartTube/releases/download/32.68s/SmartTube_stable_32.68_x86.apk",
+          "sha256": "67d7d9b9e4dd629331e751e47f5e1e23dd0d8fa5e34c6d901ba0b97eaa002781"
+        }
+      },
+      "release": "32.68s",
+      "source": "https://github.com/yuliskov/SmartTube/releases/tag/32.68s"
+    },
+    "byedpi": {
+      "label": "ByeByeDPI",
+      "package": "io.github.romanvht.byedpi",
+      "certificate": "77451075acea406406475d74d459883a49a64051faf32e42f718f3f9777a8dfb",
+      "variants": {
+        "arm64-v8a": {
+          "url": "https://github.com/romanvht/ByeByeDPI/releases/download/v.1.8.2/ByeByeDPI-v1.8.2-arm64-v8a-release.apk",
+          "sha256": "ec24d44c2f20240a4a55f88d78f4715c017e0c849cd56165ccf128d98c5c3470"
+        },
+        "armeabi-v7a": {
+          "url": "https://github.com/romanvht/ByeByeDPI/releases/download/v.1.8.2/ByeByeDPI-v1.8.2-armeabi-v7a-release.apk",
+          "sha256": "422f40c340b8dbf8f07dad42958ccae8a5b508218c838e9f7afddec6f403065f"
+        },
+        "universal": {
+          "url": "https://github.com/romanvht/ByeByeDPI/releases/download/v.1.8.2/ByeByeDPI-v1.8.2-universal-release.apk",
+          "sha256": "3df9570313c9fb03de19fde7dbf7e56b943fd0845b2d57b687c5859aff4e0001"
+        },
+        "x86": {
+          "url": "https://github.com/romanvht/ByeByeDPI/releases/download/v.1.8.2/ByeByeDPI-v1.8.2-x86-release.apk",
+          "sha256": "799781eb9103a3e6a1515d53beb0820ac5eb57fbd9aedb63dd21d27f248d08e2"
+        },
+        "x86_64": {
+          "url": "https://github.com/romanvht/ByeByeDPI/releases/download/v.1.8.2/ByeByeDPI-v1.8.2-x86_64-release.apk",
+          "sha256": "1018eccc4ac30809d909722c5ec52679f1f84e14bcb5151b511067834e3343b7"
+        }
+      },
+      "release": "v.1.8.2",
+      "source": "https://github.com/romanvht/ByeByeDPI/releases/tag/v.1.8.2"
+    },
+    "vlc": {
+      "label": "VLC",
+      "package": "org.videolan.vlc",
+      "variants": {
+        "arm64-v8a": {
+          "url": "https://downloads.videolan.org/pub/videolan/vlc-android/3.7.1/VLC-Android-3.7.1-arm64-v8a.apk",
+          "sha256": "bea9ea0cdecfd8f461ef305d2afe5d1ac1459cfb9156acce2f615788a486de74"
+        },
+        "armeabi-v7a": {
+          "url": "https://downloads.videolan.org/pub/videolan/vlc-android/3.7.1/VLC-Android-3.7.1-armeabi-v7a.apk",
+          "sha256": "a6a7f940e4bd190c9a70f3f0dc97c1c402c10200af20edac7a1d452b24abd8a0"
+        },
+        "x86": {
+          "url": "https://downloads.videolan.org/pub/videolan/vlc-android/3.7.1/VLC-Android-3.7.1-x86.apk",
+          "sha256": "5cf145afecd72782771d5dc5e3c98c1f76e5967d8cba20d289340e6638bc47c0"
+        },
+        "x86_64": {
+          "url": "https://downloads.videolan.org/pub/videolan/vlc-android/3.7.1/VLC-Android-3.7.1-x86_64.apk",
+          "sha256": "4646633ede40c4784c5584087cffc5c60cc45b16966ae0b36cedd784d7c4a11e"
+        }
+      },
+      "certificate": "c8768d2cea0c4b622e419b4b4715981946821e4ebc035fb41776cad395a7f68e"
+    },
+    "vimu": {
+      "label": "Vimu Installer",
+      "package": "net.gtvbox.installer",
+      "certificate": "532f2ed32068eff138bdc2d3c0bfcad4bcfe5125df0f4fb7d26d9da4b62e7ff9",
+      "source": "https://vimu.tv/installation-guide",
+      "variants": {
+        "universal": {
+          "url": "https://get.vimu.tv/installer/VimuInstaller.apk",
+          "sha256": "c3583e450ca0de36d90c764a9bebd97e0884be6cb9663e3a3f47c9d56936198a"
+        }
+      },
+      "note": "Официальный Installer; сам плеер и лицензия настраиваются на ТВ. SHA-256 закреплена по файлу с сайта разработчика, отдельная опубликованная сумма не обнаружена."
+    }
+  }
+}

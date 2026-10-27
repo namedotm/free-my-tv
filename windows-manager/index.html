@@ -1,0 +1,30 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Xiaomi TV Manager</title><link rel="stylesheet" href="/style.css"><script defer src="/ui.js"></script>
+<body><main><header><span class="badge">WINDOWS · ЛОКАЛЬНАЯ СЕТЬ</span><h1>Xiaomi TV Manager</h1><p>Три устройства. Отдельная проверка каждого. Работающий главный экран остаётся на месте.</p></header>
+<section><h2>Устройства</h2><div class="devices">
+<label>Mi Smart Projector 2 Pro<input id="ip0" placeholder="192.168.28.60"></label>
+<label>Mi Box S EU №1<input id="ip1" placeholder="Введите IP или IP:порт"></label>
+<label>Mi Box S EU №2<input id="ip2" placeholder="Введите IP или IP:порт"></label></div>
+<p class="hint">ADB: C:\platform-tools\adb.exe. На ТВ включите отладку и разрешите подключение этому компьютеру. Пустые поля пропускаются.</p>
+<div class="buttons"><button id="check">Проверить подключения</button><button id="measure">Замерить запуск VLC</button><button id="retry">Повторить неудачные шаги</button></div>
+<div id="summary" class="summary" role="status"></div><div id="devices" aria-live="polite"></div></section>
+<section><h2>Приложения</h2><p>Free My TV, SmartTube, VLC и ByeByeDPI скачиваются и устанавливаются как APK автоматически. Vimu: автоматически устанавливается официальный Installer, затем установка плеера подтверждается на ТВ. MX Player пока устанавливается через официальный магазин.</p><div class="choices">
+<label><input type="checkbox" name="app" value="freemytv">Free My TV · кнопка сети</label>
+<label><input type="checkbox" name="app" value="smarttube">SmartTube · официальный релиз</label>
+<label><input type="checkbox" name="app" value="vlc">VLC · официальный VideoLAN</label>
+<label><input type="checkbox" name="app" value="byedpi">ByeByeDPI · установить без запуска VPN</label>
+<label><input type="checkbox" name="app" value="vimu">Vimu · скачать и установить официальный Installer APK</label>
+<label><input type="checkbox" name="app" value="mx">MX Player · установка через официальный магазин</label></div>
+<p class="warning">При разных сертификатах обновление пропускается. Данные, Home, Original и watchdog не меняются. AirCast не устанавливается и не перенастраивается; Chromecast и Miracast не затрагиваются.</p>
+<p>SmartTube: разработчик сообщил о заражённой среде сборки и возможной компрометации ключей. Менеджер проверяет официальный SHA-256 и подпись конкретного релиза; это не гарантия отсутствия вредоносного кода.</p>
+<div class="choices"><label><input id="official" type="checkbox">Включить официальный YouTube в подготовленный белый список</label></div>
+<button id="profile">Подготовить профиль ByeByeDPI для YouTube</button>
+<p class="hint">Профиль копируется в Download на выбранных ТВ. Перед импортом экспортируйте прежние настройки. Импорт, проверка белого списка и разрешение VPN — на экране ТВ. Автозапуск выключен. Пустой белый список не создаётся.</p></section>
+<section><h2>Медиатека Windows</h2><div class="folder"><input id="folder" placeholder="Выберите папку с фильмами" aria-label="Папка с фильмами"><button id="browse">Выбрать папку…</button></div>
+<label><input id="share" type="checkbox">После установки создать SMB-папку и правило брандмауэра для указанных IP</label>
+<p class="hint">Отдельное окно Windows попросит UAC и пароль новой учётной записи. Только чтение, SMB2/3, без SMB1 и гостей. Пароль не попадает в конфигурацию или журнал.</p>
+<div class="buttons"><button id="smb">Настроить общую папку</button><button id="restore">Восстановить настройки SMB</button></div>
+<p>Восстановление удаляет только созданные менеджером общий ресурс, правило брандмауэра, разрешение чтения и его учётную запись. Приложения и файлы фильмов не удаляются. Настройки приложений восстанавливаются вручную из их собственного экспорта.</p></section>
+<section class="install"><button id="install">УСТАНОВИТЬ НА ВСЕ УСТРОЙСТВА</button><p id="status" role="status">Загрузка интерфейса…</p></section>
+<section><h2>Журнал</h2><pre id="log" aria-live="polite"></pre><p class="hint">Полные отдельные отчёты и резервные APK находятся в windows-manager/data/reports; журналы — в data/logs. Они остаются на этом компьютере.</p></section>
+<footer>Проверка подключений не устанавливает приложения и не меняет настройки ТВ. Замер запуска открывает VLC на экране; холодный запуск и ускорение не гарантируются. Совместимость Windows и реальных ТВ требует первого пользовательского теста.</footer>
+</main></body></html>

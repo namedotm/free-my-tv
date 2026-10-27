@@ -1,0 +1,6 @@
+{
+  "ips": ["192.168.28.60", "", ""],
+  "apps": ["freemytv", "smarttube", "vlc"],
+  "folder": "",
+  "official_youtube": false
+}
