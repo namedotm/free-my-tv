@@ -7,8 +7,10 @@ import zipfile
 from engine import ROOT, download, digest, extract_zip, APK_HASH, Problem, read_json
 
 FILES = ['applications.py','repair.py','APPS-MEDIA-RU.md','profiles.py','media.py','FolderInfo.ps1','W-INTAKE-RU.md','TRANSFER-RU.md','app.py','engine.py','index.html','style.css','ui.js','SMB.ps1','bootstrap.ps1',
+         'apk_intake.py','remote.py','optimize.py','reports.py','API-RU.md','RESTORE-RU.md','OPTIMIZE-RU.md',
          'START.bat','devices.json','dependencies.json','catalog.json','README-RU.md',
-         'RESEARCH-RU.md','tests/test_applications_repair.py','tests/test_manager.py','tests/test_profiles_media.py','tests/restore-safety.ps1','build_bundle.py']
+         'RESEARCH-RU.md','tests/test_applications_repair.py','tests/test_manager.py','tests/test_profiles_media.py',
+         'tests/test_devices_vpn.py','tests/test_intake_remote.py','tests/restore-safety.ps1','build_bundle.py']
 
 
 def build():

@@ -1,7 +1,8 @@
 """Reviewed user-app operations. System packages are inventory-only (HomeMode owns them)."""
 from pathlib import Path
 import re
-from engine import Problem, save_json, digest
+from engine import Problem, save_json, digest, read_json
+from optimize import KB
 
 PKG=re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+')
 PROTECTED=re.compile(r'^(?:android|com\.android\.|com\.google\.|com\.xiaomi\.|com\.miui\.|com\.mediatek\.|com\.qualcomm\.|com\.droidlogic\.|com\.amlogic\.|com\.nvidia\.|io\.freemytv$)|cast|airplay|aircast|airscreen|airreceiver|eshare|waxrain|ionitech|miracast|bluetooth|network|wifi|ethernet|hdmi|drm|security|permission|keystone|autofocus|launcher|inputmethod|keyboard|vpn|incy|byedpi|videolan|gtvbox|mxtech|smarttube',re.I)
@@ -33,7 +34,7 @@ def inventory(device):
     for p in sorted(known|installed):
         is_system=p in system or p not in third
         protected=is_system or bool(PROTECTED.search(p)) or p in dynamic
-        rows.append({'package':p,'label':LABELS.get(p,p),'installed':p in installed,'system':is_system,'disabled':p in disabled,'protected':protected,
+        rows.append({'package':p,'label':LABELS.get(p) or (KB.get(p) or (p,))[0],'installed':p in installed,'system':is_system,'disabled':p in disabled,'protected':protected,
                      'reason':'Системный или критический компонент: только просмотр' if protected else 'Стороннее приложение; необходимость определяет пользователь',
                      'candidate':any(k in p.lower() for k in ('advert','analytics','telemetry','demo')) and not protected})
     return rows
@@ -139,6 +140,20 @@ def rollback(device,report,journal,folder):
         if enabled_state(device,p)!=state:raise Problem('Откат enabled-state не подтверждён.',code='APP_VERIFY')
         e['restored']=True;save_json(Path(folder)/'app-changes.json',journal);results.append(p)
     return results
+
+
+def history(data,folders):
+    """The manager's own operations on one device, newest first: what was asked, what Android confirmed."""
+    out=[]
+    for relative in reversed(folders[-30:]):
+        folder=(Path(data)/relative).resolve()
+        if not folder.is_relative_to(Path(data).resolve()):continue
+        journal=read_json(folder/'app-changes.json',None)
+        if not journal:continue
+        m=read_json(folder/'measurements.json',None) or {}
+        out.append({'report':relative,'entries':[{k:e.get(k) for k in ('package','action','status','restored','message')} for e in journal['entries']],
+                    'storage_delta_bytes':m.get('storage_delta_bytes'),'undo_available':relative==folders[-1]})
+    return out
 
 
 def metrics(before,after):

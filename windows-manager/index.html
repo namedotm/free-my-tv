@@ -1,60 +1,140 @@
 <!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Xiaomi TV Manager</title><link rel="stylesheet" href="/style.css"><script defer src="/ui.js"></script>
-<body><main><header><span class="badge">WINDOWS · ЛОКАЛЬНАЯ СЕТЬ</span><h1>Xiaomi TV Manager</h1><p>Три устройства. Отдельная проверка каждого. Работающий главный экран остаётся на месте.</p></header>
-<section><h2>Устройства</h2><div class="devices">
-<label>Mi Smart Projector 2 Pro<input id="ip0" placeholder="192.168.28.60"></label>
-<label>Mi Box S EU №1<input id="ip1" placeholder="Введите IP или IP:порт"></label>
-<label>Mi Box S EU №2<input id="ip2" placeholder="Введите IP или IP:порт"></label></div>
-<p class="hint">ADB: C:\platform-tools\adb.exe. На ТВ включите отладку и разрешите подключение этому компьютеру. Пустые поля пропускаются.</p>
-<div class="buttons"><button id="check">Проверить подключения</button><button id="measure">Замерить запуск VLC</button><button id="retry">Повторить неудачные шаги</button><button id="diagnose_home">Почему не включается Free My TV?</button><button id="network_profile">Применить русский язык и кнопку сети</button></div>
-<div id="summary" class="summary" role="status"></div><div id="devices" aria-live="polite"></div></section>
-<section><h2>Управление установленными приложениями</h2>
-<p>Полный список пакетов для выбранного ТВ, включая отключённые и удалённые записи, которые ещё хранит Android. Системные и критические компоненты защищены. Само сканирование ничего не очищает.</p>
-<div class="devices"><label>Устройство<select id="apps-device"><option value="0">Проектор — первое поле IP</option><option value="1" selected>Приставка №1 — второе поле IP</option><option value="2">Приставка №2 — третье поле IP</option></select></label><label>Поиск<input id="apps-search" placeholder="Название или package name"></label><label>Показать<select id="apps-filter"><option value="all">Все</option><option value="third">Сторонние</option><option value="system">Системные / защищённые</option><option value="disabled">Отключённые</option><option value="removed">Удалённые записи Android</option><option value="candidates">Кандидаты по имени — не рекомендация</option></select></label></div>
-<div class="buttons"><button id="apps-scan">Прочитать список приложений</button><button id="apps-undo">Отменить последнюю операцию приложений</button></div>
-<p id="apps-status" role="status">Список ещё не прочитан.</p><div id="apps-list"></div>
-<label>Действие для отмеченных пакетов<select id="apps-operation"><option value="disable">Отключить сторонние — обратимо, APK остаётся</option><option value="enable">Включить отключённые сторонние</option><option value="uninstall_keep_data">Удалить сторонние APK для пользователя 0, сохранить данные и копию APK</option><option value="restore">Вернуть удалённую запись, если APK ещё есть в Android</option></select></label>
-<button id="apps-plan">Показать точный план и подтвердить</button><div id="apps-result" aria-live="polite"></div>
-<p class="hint">Кэш и данные приложений не очищаются. Отключение не освобождает место APK. Удаление системных APK, отключение сети, Cast, DRM, служб изображения и безопасности запрещены. Карточка «Настройки на ТВ» позволяет отдельно посмотреть объём приложения и кэша штатными средствами.</p></section>
-<section><h2>Приложения</h2><p>Free My TV, INCY, SmartTube, VLC и ByeByeDPI скачиваются и устанавливаются как APK автоматически. Vimu: автоматически устанавливается официальный Installer, затем установка плеера подтверждается на ТВ. MX Player пока устанавливается через официальный магазин.</p><div class="choices">
-<label><input type="checkbox" name="app" value="freemytv">Free My TV · кнопка сети</label>
-<label><input type="checkbox" name="app" value="incy">INCY · официальный Android/TV APK</label><label><input type="checkbox" name="app" value="youtube">YouTube · проверить наличие / открыть Google Play</label>
+<body>
+<header class="top"><div class="brand"><span class="badge">WINDOWS · ДОМАШНЯЯ СЕТЬ · ТОЛЬКО ЭТОТ КОМПЬЮТЕР</span><h1>Xiaomi TV Manager</h1></div>
+<div class="status-box"><span id="busy" class="dot" aria-hidden="true"></span><p id="status" role="status">Загрузка интерфейса…</p></div></header>
+
+<section class="fleet" aria-label="Устройства">
+<article class="tv" data-slot="0"><div class="tv-head"><label class="target"><input type="checkbox" id="use0" checked><span>Mi Smart Projector 2 Pro</span></label><span class="pill" id="adb0">—</span></div>
+<input id="ip0" placeholder="192.168.28.60" aria-label="IP проектора"><div class="tv-facts" id="facts0">Нажмите «Проверить», чтобы считать модель и память.</div>
+<div class="row"><button class="small" data-connect="0">Подключить</button><button class="small ghost" data-disconnect="0">Отключить</button></div></article>
+<article class="tv" data-slot="1"><div class="tv-head"><label class="target"><input type="checkbox" id="use1" checked><span>Mi Box S EU №1</span></label><span class="pill" id="adb1">—</span></div>
+<input id="ip1" placeholder="192.168.31.232" aria-label="IP приставки №1"><div class="tv-facts" id="facts1">Нажмите «Проверить», чтобы считать модель и память.</div>
+<div class="row"><button class="small" data-connect="1">Подключить</button><button class="small ghost" data-disconnect="1">Отключить</button></div></article>
+<article class="tv" data-slot="2"><div class="tv-head"><label class="target"><input type="checkbox" id="use2" checked><span>Mi Box S EU №2</span></label><span class="pill" id="adb2">—</span></div>
+<input id="ip2" placeholder="192.168.31.20" aria-label="IP приставки №2"><div class="tv-facts" id="facts2">Нажмите «Проверить», чтобы считать модель и память.</div>
+<div class="row"><button class="small" data-connect="2">Подключить</button><button class="small ghost" data-disconnect="2">Отключить</button></div></article>
+</section>
+<p class="hint center">Галочка — цель следующего действия. Проектор — источник настроек: его лаунчер, проекционные настройки и AirCast менеджер не меняет. Первое подключение подтверждается на экране ТВ.</p>
+
+<nav class="tabs" role="tablist" aria-label="Разделы">
+<button role="tab" data-tab="overview" aria-selected="true">Устройства</button>
+<button role="tab" data-tab="apk">Свои APK</button>
+<button role="tab" data-tab="apps">Приложения и очистка</button>
+<button role="tab" data-tab="catalog">Каталог</button>
+<button role="tab" data-tab="fmtv">Free My TV</button>
+<button role="tab" data-tab="media">Медиатека</button>
+<button role="tab" data-tab="vpn">INCY и YouTube</button>
+<button role="tab" data-tab="remote">Пульт</button>
+<button role="tab" data-tab="log">Журнал</button>
+</nav>
+
+<main>
+<section class="panel" id="tab-overview" role="tabpanel">
+<h2>Проверка и диагностика</h2>
+<p>Только чтение: модель, Android, API, архитектура, память, текущий главный экран и VPN. На ТВ ничего не меняется.</p>
+<div class="buttons"><button id="check" class="primary">Проверить выбранные ТВ</button><button id="vpn_check">Проверить VPN-маршрутизацию</button><button id="measure">Замерить запуск приложений</button><button id="retry">Повторить неудачные шаги установки</button></div>
+<p class="hint">Замер по очереди откроет выбранные в «Каталоге» плееры (или VLC) три раза, затем вернёт ТВ на главный экран и сравнит с прошлым замером этого же ТВ.</p>
+<div id="summary" class="summary" role="status"></div><div id="devices" aria-live="polite"></div>
+</section>
+
+<section class="panel" id="tab-apk" role="tabpanel" hidden>
+<h2>Установка своих APK</h2>
+<div id="drop" class="drop" tabindex="0" role="button" aria-label="Перетащите APK сюда или нажмите для выбора">
+<strong>Перетащите сюда .apk, .apks или .xapk</strong><span>или</span><button id="pick" type="button">Выбрать файл…</button><input id="file" type="file" accept=".apk,.apks,.xapk,.apkm" hidden multiple></div>
+<div class="url-row"><input id="apk-url" placeholder="https://… ссылка на APK" aria-label="HTTPS-ссылка на APK"><button id="apk-download">Скачать по ссылке</button></div>
+<p class="hint">Файл копируется в папку data/uploads этого менеджера и проверяется: пакет, версия, минимальный Android, архитектура, SHA-256 файла и сертификата. На Windows содержимое APK не запускается. Ссылки — только HTTPS на публичные сайты; адреса домашней сети не принимаются.</p>
+<div id="uploads"></div>
+</section>
+
+<section class="panel" id="tab-apps" role="tabpanel" hidden>
+<h2>Приложения и очистка</h2>
+<div class="grid3"><label>Устройство<select id="apps-device"><option value="0">Проектор</option><option value="1" selected>Приставка №1</option><option value="2">Приставка №2</option></select></label>
+<label>Поиск<input id="apps-search" placeholder="Название или package name"></label>
+<label>Показать<select id="apps-filter"><option value="all">Все</option><option value="advice">Кандидаты и «проверьте»</option><option value="third">Сторонние</option><option value="system">Системные / защищённые</option><option value="homemode">Отключает Free My TV</option><option value="disabled">Отключённые</option><option value="removed">Удалённые записи Android</option></select></label></div>
+<div class="buttons"><button id="apps-scan" class="primary">Прочитать список и анализ</button><label class="inline">Сортировка<select id="apps-sort"><option value="advice">По рекомендации</option><option value="size">По размеру</option><option value="name">По названию</option></select></label></div>
+<p id="apps-status" role="status">Список ещё не прочитан.</p>
+<div id="apps-summary"></div>
+<div id="apps-list"></div>
+<div class="action-bar"><label>Действие для отмеченных<select id="apps-operation"><option value="disable">Отключить — обратимо, APK остаётся</option><option value="enable">Включить отключённые</option><option value="uninstall_keep_data">Удалить APK стороннего приложения (данные сохраняются, копия APK делается заранее)</option><option value="restore">Вернуть удалённую запись (если APK ещё есть в Android)</option></select></label>
+<button id="apps-plan" class="primary">Показать план и выполнить</button><button id="apps-undo">Отменить последнюю операцию</button></div>
+<div id="apps-result" aria-live="polite"></div>
+<h3>Очистка кэша</h3>
+<p>Штатная команда Android удаляет только кэш, который приложения создают заново. Данные, аккаунты и настройки остаются. Проектор-источник не очищается.</p>
+<button id="cache-plan">Очистить кэш на выбранном устройстве…</button><div id="cache-result"></div>
+<h3>История операций менеджера</h3><div id="apps-history"><p class="hint">Появится после чтения списка.</p></div>
+<p class="hint">Системные и критические компоненты здесь только для просмотра: промо и телеметрию Xiaomi/Google отключает сам Free My TV при переходе в режим Free My TV на ТВ, а режим Original всё возвращает. Кэш и данные приложений менеджер без вашей команды не очищает.</p>
+</section>
+
+<section class="panel" id="tab-catalog" role="tabpanel" hidden>
+<h2>Проверенный каталог</h2>
+<p>Источники, контрольные суммы и сертификаты закреплены. По умолчанию ничего не выбрано: установка нужна, только если приложения нет.</p>
+<div class="choices">
+<label><input type="checkbox" name="app" value="freemytv">Free My TV · профильная сборка</label>
+<label><input type="checkbox" name="app" value="incy">INCY · официальный Android-релиз</label>
+<label><input type="checkbox" name="app" value="youtube">YouTube · проверить наличие / открыть Google Play</label>
 <label><input type="checkbox" name="app" value="smarttube">SmartTube · официальный релиз</label>
 <label><input type="checkbox" name="app" value="vlc">VLC · официальный VideoLAN</label>
-<label><input type="checkbox" name="app" value="byedpi">ByeByeDPI · установить без запуска VPN</label>
-<label><input type="checkbox" name="app" value="vimu">Vimu · скачать и установить официальный Installer APK</label>
-<label><input type="checkbox" name="app" value="mx">MX Player · установка через официальный магазин</label></div>
-<p class="warning">При разных сертификатах обновление пропускается. Данные, Home, Original и watchdog не меняются. AirCast не устанавливается и не перенастраивается; Chromecast и Miracast не затрагиваются.</p>
-<p>SmartTube: разработчик сообщил о заражённой среде сборки и возможной компрометации ключей. Менеджер проверяет официальный SHA-256 и подпись конкретного релиза; это не гарантия отсутствия вредоносного кода.</p>
-<div class="choices"><label><input id="official" type="checkbox">Включить официальный YouTube в подготовленный белый список</label></div>
-<button id="profile">Подготовить профиль ByeByeDPI для YouTube</button>
-<p class="hint">Профиль копируется в Download на выбранных ТВ. Перед импортом экспортируйте прежние настройки. Импорт, проверка белого списка и разрешение VPN — на экране ТВ. Автозапуск выключен. Пустой белый список не создаётся.</p></section>
-<section><h2>Настройки и избранное с проектора</h2>
-<label>Адрес проектора — источник, не цель переноса<input id="source-ip" value="192.168.28.60"></label>
-<div class="buttons"><button id="read_source">Прочитать профиль проектора</button><button id="sync_ui">Перенести профиль на приставки</button><button id="restore_ui">Восстановить UI-профиль приставок</button></div>
+<label><input type="checkbox" name="app" value="byedpi">ByeByeDPI · без запуска VPN</label>
+<label><input type="checkbox" name="app" value="vimu">Vimu · официальный Installer</label>
+<label><input type="checkbox" name="app" value="mx">MX Player · через Google Play</label></div>
+<p class="warning">При другом сертификате обновление пропускается. Данные, Home, Original и watchdog не меняются. AirCast не устанавливается. SmartTube: разработчик сообщал о заражённой среде сборки — проверка SHA-256 и подписи не гарантирует отсутствия вредоносного кода.</p>
+<div class="buttons"><button id="install" class="primary">Установить выбранное из каталога</button></div>
+</section>
+
+<section class="panel" id="tab-fmtv" role="tabpanel" hidden>
+<h2>Free My TV: профиль, кнопка сети, избранное</h2>
+<label>Адрес проектора-источника<input id="source-ip" value="192.168.28.60"></label>
+<div class="buttons"><button id="read_source">Прочитать профиль проектора</button><button id="network_profile">Русский язык и кнопка сети на приставках</button><button id="sync_ui">Перенести профиль на приставки</button><button id="restore_ui">Вернуть прежний UI-профиль приставок</button></div>
 <p id="source-status" role="status">Профиль пока не прочитан.</p>
-<label><input id="sync-ui" type="checkbox">После установки приложений перенести сохранённый профиль на приставки</label>
-<p class="hint">Работающий лаунчер проектора не обновляется и его настройки не меняются. Новый профильный APK устанавливается только на совместимые приставки с подходящей подписью. В избранное добавляются установленные INCY, YouTube и SmartTube без дубликатов. Home и разрешения не копируются.</p>
-<details><summary>Если оригинальная версия проектора не умеет экспортировать: ручной профиль</summary>
-<p>Заполните параметры по экрану Home Settings проектора. Это ручной профиль, а не скрытая копия закрытых данных.</p>
-<div class="devices"><label>Язык<input id="profile-language" value="ru"></label><label>Тема<select id="profile-theme"><option value="auto">Автоматически</option><option value="dark">Тёмная</option><option value="light">Светлая</option></select></label><label>Температура<select id="profile-temperature"><option value="C">°C</option><option value="F">°F</option><option value="auto">Автоматически</option></select></label></div>
-<label>Избранное проектора в нужном порядке: package name, по одному в строке<textarea id="profile-shelf" rows="5" placeholder="com.google.android.youtube.tv&#10;org.smarttube.stable"></textarea></label>
-<label>TV-приложения, обнаруженные на проекторе<select id="source-apps" multiple size="5"></select></label><button id="append-apps">Добавить выбранные в ручной список</button>
-<button id="save-profile">Сохранить ручной профиль</button><p class="hint">Обнаружение приложений не раскрывает их порядок в избранном: расставьте его вручную. Ключи, подписки VPN и аккаунты в профиль не входят. Старое избранное приставок сохраняется; при нехватке места менеджер остановит перенос.</p>
-</details></section>
-<section><h2>INCY: перенос подключения и маршрутизация</h2>
-<p>APK устанавливается автоматически. Откройте INCY на приставках и перенесите сервер/подписку штатным Send to TV, QR или импортом в самом INCY. Менеджер не извлекает VPN-секреты с проектора.</p>
-<button id="open_incy">Открыть INCY на приставках</button>
-<p class="warning">До подключения выберите режим «только выбранные приложения»: SmartTube и при необходимости официальный YouTube. Пустой список, глобальный режим и Always-on/блокировка всего трафика не подходят. INCY и ByeByeDPI нельзя одновременно использовать как активный Android VPN. Ранее включённое автоподключение проверьте в самом INCY.</p>
-<p class="hint">Официально поддержаны заголовки подписки per-app-proxy-enable=1, per-app-proxy-mode=proxy и per-app-proxy-list с нужными пакетами. Менеджер сохраняет их без секретов в отчёте INCY-YOUTUBE-HEADERS.txt. Их добавляет ваш провайдер; без доступа к нему настройте список в самом клиенте. Параметры серверов переносите средствами клиента; согласие VPN и проверка воспроизведения — на экране ТВ. Не включайте туннель до проверки списка. VLC/Vimu/MX/AirCast и SMB должны остаться вне VPN.</p></section>
-<section><h2>Медиатека Windows</h2><div class="folder"><input id="folder" placeholder="Выберите папку с фильмами" aria-label="Папка с фильмами"><button id="browse">Выбрать папку…</button></div>
-<label><input id="share" type="checkbox">После установки создать SMB-папку и правило брандмауэра для указанных IP</label>
-<p class="hint">Отдельное окно Windows попросит UAC и пароль новой учётной записи. Только чтение, SMB2/3, без SMB1 и гостей. Пароль не попадает в конфигурацию или журнал.</p>
-<div class="buttons"><button id="media-info">Как подключить папку в плеерах</button><button id="smb">Настроить общую папку</button><button id="restore">Восстановить настройки SMB</button></div>
-<label>Плеер для открытия папки на ТВ<select id="media-player"><option value="vlc">VLC</option><option value="vimu">Vimu</option><option value="mx">MX Player</option></select></label>
-<div class="buttons"><button id="existing_setup">НАСТРОИТЬ УЖЕ УСТАНОВЛЕННОЕ: Windows + профиль + папка</button><button id="open_media">Проверить доступ с ТВ и передать адрес плееру</button></div>
-<p class="warning">APK в этом режиме не устанавливаются. Профиль применяется только к приставкам, проектор-источник защищён. Адрес передаётся выбранному плееру, если он принимает SMB Intent. Авторизация и сохранение источника могут потребовать действий на ТВ; успех запуска плеера не равен доступу к файлам.</p>
-<div id="media-result" aria-live="polite"></div><p>Восстановление удаляет только созданные менеджером общий ресурс, правило брандмауэра, разрешение чтения и его учётную запись. Приложения и файлы фильмов не удаляются. Настройки приложений восстанавливаются вручную из их собственного экспорта.</p></section>
-<section class="install"><button id="install">УСТАНОВИТЬ ВЫБРАННЫЕ APK</button><p id="status" role="status">Загрузка интерфейса…</p></section>
-<section><h2>Журнал</h2><pre id="log" aria-live="polite"></pre><p class="hint">Полные отдельные отчёты и резервные APK находятся в windows-manager/data/reports; журналы — в data/logs. Они остаются на этом компьютере.</p></section>
-<footer>Проверка подключений не устанавливает приложения и не меняет настройки ТВ. Замер запуска открывает VLC на экране; холодный запуск и ускорение не гарантируются. Совместимость Windows и реальных ТВ требует первого пользовательского теста.</footer>
-</main></body></html>
+<label class="inline-check"><input id="sync-ui" type="checkbox">После установки из каталога перенести профиль на приставки</label>
+<p class="hint">Переносятся только настройки интерфейса Free My TV (язык, тема, погода, верхние кнопки, избранное). Аккаунты, VPN, разрешения и Home не копируются. Избранное объединяется: проектор → прежнее избранное приставки → установленные INCY/YouTube/SmartTube, без дубликатов и без молчаливого удаления.</p>
+<details><summary>Ручной профиль, если проектор не умеет экспортировать</summary>
+<div class="grid3"><label>Язык<input id="profile-language" value="ru"></label><label>Тема<select id="profile-theme"><option value="auto">Автоматически</option><option value="dark">Тёмная</option><option value="light">Светлая</option></select></label><label>Температура<select id="profile-temperature"><option value="C">°C</option><option value="F">°F</option><option value="auto">Автоматически</option></select></label></div>
+<label>Избранное в нужном порядке: package name, по одному в строке<textarea id="profile-shelf" rows="5" placeholder="com.google.android.youtube.tv&#10;org.smarttube.stable"></textarea></label>
+<label>TV-приложения проектора<select id="source-apps" multiple size="5"></select></label><div class="buttons"><button id="append-apps">Добавить выбранные в список</button><button id="save-profile">Сохранить ручной профиль</button></div>
+</details>
+<h3>Почему не включается режим Free My TV</h3>
+<p>Диагностика владельцев сохранённых Wi-Fi-сетей. Это не ошибка установки: Free My TV останавливается, чтобы не удалить ваши сети.</p>
+<div class="buttons"><button id="diagnose_home">Диагностика на выбранных ТВ</button><label class="inline">ТВ для разбора сетей<select id="wifi-device"><option value="1" selected>Приставка №1</option><option value="2">Приставка №2</option></select></label><button id="wifi-plan">Показать сохранённые сети</button></div>
+<div id="wifi-result"></div>
+</section>
+
+<section class="panel" id="tab-media" role="tabpanel" hidden>
+<h2>Медиатека Windows для VLC, Vimu и MX</h2>
+<div class="folder"><input id="folder" placeholder="W:\.intake" aria-label="Папка с фильмами"><button id="browse">Выбрать папку…</button></div>
+<div class="buttons"><button id="smb">1. Открыть доступ к папке (UAC)</button><button id="media-info">2. Параметры для плееров</button><button id="restore">Отменить доступ к папке</button></div>
+<label class="inline">Плеер<select id="media-player"><option value="vlc">VLC</option><option value="vimu">Vimu</option><option value="mx">MX Player</option></select></label>
+<div class="buttons"><button id="play_test" class="primary">3. Проверить воспроизведение на выбранных ТВ</button><button id="open_media">Проверить доступ TCP 445</button><button id="existing_setup">Всё сразу: папка + профиль + проверка</button></div>
+<p class="warning">Проверка открывает в плеере самый маленький видеофайл папки. Если плеер спросит логин и пароль — введите их на ТВ и отметьте «Запомнить». Успех засчитывается, только когда Android сообщит, что плеер воспроизводит файл. Сохранить папку как постоянный источник плеера можно только в самом плеере: ни один из трёх не принимает адрес папки извне (проверено на ваших ТВ).</p>
+<label class="inline-check"><input id="share" type="checkbox">После установки из каталога открыть доступ к папке</label>
+<div id="media-result" aria-live="polite"></div>
+<p class="hint">Доступ только на чтение, SMB2/3, отдельная учётная запись, правило брандмауэра только для IP ваших ТВ. Пароль вводится в отдельном окне Windows и нигде не сохраняется. «Отменить доступ» удаляет только созданное менеджером; фильмы остаются.</p>
+</section>
+
+<section class="panel" id="tab-vpn" role="tabpanel" hidden>
+<h2>INCY / ByeByeDPI только для SmartTube и YouTube</h2>
+<div class="buttons"><button id="open_incy">Открыть INCY на приставках</button><button id="profile">Подготовить профиль ByeByeDPI</button><button id="vpn_check2">Проверить, что идёт через VPN</button></div>
+<label class="inline-check"><input id="official" type="checkbox">Включить официальный YouTube в белый список</label>
+<p class="warning">Нужен режим «только выбранные приложения»: SmartTube и при необходимости YouTube. Не используйте глобальный режим, Always-on и блокировку без VPN. INCY и ByeByeDPI одновременно не включайте. VLC/Vimu/MX/AirCast и медиатека должны идти мимо VPN.</p>
+<p class="hint">Заголовки подписки INCY: per-app-proxy-enable: 1, per-app-proxy-mode: proxy, per-app-proxy-list: org.smarttube.stable,com.google.android.youtube.tv — их добавляет провайдер подписки (файл INCY-YOUTUBE-HEADERS.txt в отчёте). Сервер переносите штатным Send to TV/QR. Проверка маршрутизации читает реальные UID в туннеле Android.</p>
+</section>
+
+<section class="panel" id="tab-remote" role="tabpanel" hidden>
+<h2>Пульт и экран</h2>
+<div class="grid3"><label>Устройство<select id="remote-device"><option value="0">Проектор</option><option value="1" selected>Приставка №1</option><option value="2">Приставка №2</option></select></label></div>
+<div class="remote-layout"><div class="pad" aria-label="Пульт">
+<button data-key="settings" class="small ghost">⚙</button><button data-key="up">▲</button><button data-key="apps" class="small ghost">▦</button>
+<button data-key="left">◀</button><button data-key="ok" class="ok">OK</button><button data-key="right">▶</button>
+<button data-key="back">↩</button><button data-key="down">▼</button><button data-key="home">⌂</button>
+<button data-key="vol_down">−</button><button data-key="play">⏯</button><button data-key="vol_up">+</button></div>
+<div class="screen"><div class="buttons"><button id="shot">Снимок экрана</button><button id="remote-apps">Список приложений</button></div><img id="shot-img" alt="Снимок экрана ТВ появится здесь" hidden><div id="remote-app-list"></div></div></div>
+<p class="hint">Нажатия передаются через ADB в домашней сети, только пока открыт менеджер. Защищённое видео (DRM) на снимке экрана чёрное. Показ экрана в реальном времени (scrcpy) не встроен: см. RESEARCH-RU.md.</p>
+</section>
+
+<section class="panel" id="tab-log" role="tabpanel" hidden>
+<h2>Журнал</h2><pre id="log" aria-live="polite"></pre>
+<p class="hint">Отчёты, резервные APK и журналы — в windows-manager/data (reports, logs, apk-installs, uploads). Они остаются на этом компьютере. Как всё вернуть — RESTORE-RU.md.</p>
+</section>
+</main>
+<footer>Менеджер слушает только 127.0.0.1 и не публикует ADB, SMB или себя в интернет. Проверка не меняет ТВ; каждое изменение показывается планом и подтверждается.</footer>
+</body></html>
