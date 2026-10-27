@@ -2,15 +2,16 @@
   "reviewed": "2026-10-27",
   "apps": {
     "freemytv": {
-      "label": "Free My TV",
+      "label": "Free My TV · перенос профиля",
       "package": "io.freemytv",
       "certificate": "8da630acb15da56191213ac858449ef5ee5908332d52b8774d52ad11ea3ec99c",
       "variants": {
         "universal": {
-          "url": "https://raw.githubusercontent.com/namedotm/free-my-tv/09fefd8e7e7737912eb4a751729b5498368df23e/artifacts/FreeMyTV.apk",
-          "sha256": "e15a7b9f0fce46ff90c6fd7d23f41b1689c6eaed755a4a50099096b2c36e8c04"
+          "url": "https://raw.githubusercontent.com/namedotm/free-my-tv/refs/heads/feature/incy-profiles-media/artifacts/FreeMyTV-profiles.apk",
+          "sha256": "e905828b09147bb9657b140d2f514c341a889f32d61095c56c76dfa903c60174"
         }
-      }
+      },
+      "bundled_file": "FreeMyTV-profiles.apk"
     },
     "smarttube": {
       "label": "SmartTube",
@@ -101,6 +102,20 @@
         }
       },
       "note": "Официальный Installer; сам плеер и лицензия настраиваются на ТВ. SHA-256 закреплена по файлу с сайта разработчика, отдельная опубликованная сумма не обнаружена."
+    },
+    "incy": {
+      "label": "INCY",
+      "package": "llc.itdev.incy",
+      "certificate": "e1430d81de511c72253a6a409910e609686f084e3944eab6f154999ac7128b13",
+      "android_version": "3.8.1",
+      "release": "android-v3.8.1",
+      "source": "https://incy-app.com",
+      "variants": {
+        "universal": {
+          "url": "https://github.com/INCY-DEV/incy-platforms/releases/download/android-v3.8.1/Incy.apk",
+          "sha256": "67c8253b3dc5fd2a0a0b27d5d4736834fa43e276a1a54d3282f5df0935092836"
+        }
+      }
     }
   }
 }

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.freemytv"
-    android:versionCode="3"
-    android:versionName="1.2">
+    android:versionCode="4"
+    android:versionName="1.2.1-profile">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -208,6 +208,10 @@
             android:name=".PhotoInbox"
             android:authorities="io.freemytv.photos"
             android:exported="true" />
+
+        <!-- Non-secret UI profiles: authenticated ADB shell only, same process as Prefs. -->
+        <provider android:name=".ProfileInbox" android:authorities="io.freemytv.profile"
+            android:process=":home" android:exported="true" />
 
         <!-- The sleep timer's minutes left over any app, while the timer runs. A process of its own: a foreground
              service in :home would keep the whole home screen in memory under the app in front. -->

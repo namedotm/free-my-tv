@@ -346,6 +346,28 @@ class RealArtifactTests(unittest.TestCase):
             self.assertEqual(info['package'],'io.freemytv');self.assertEqual(info['version'],3)
             self.assertEqual(info['certificates'],['8da630acb15da56191213ac858449ef5ee5908332d52b8774d52ad11ea3ec99c'])
 
+    def test_profile_apk_keeps_signer_and_adds_version_four(self):
+        apk=e.ROOT/'payload/FreeMyTV-profiles.apk'
+        if not apk.exists():apk=e.ROOT.parent/'artifacts/FreeMyTV-profiles.apk'
+        app=e.read_json(e.ROOT/'catalog.json')['apps']['freemytv']
+        self.assertEqual(e.digest(apk),app['variants']['universal']['sha256'])
+        for api in (28,30,34):
+            info=e.Tools().inspect(apk,api)
+            self.assertEqual(info['version'],4);self.assertEqual(info['package'],'io.freemytv')
+            self.assertEqual(info['certificates'],[app['certificate']])
+
+    def test_actual_incy_universal_android_tv_apk(self):
+        app=e.read_json(e.ROOT/'catalog.json')['apps']['incy']
+        variant=e.choose_variant(app,['armeabi-v7a'])
+        with tempfile.TemporaryDirectory() as td:
+            apk=e.download(variant['url'],Path(td)/'Incy.apk',variant['sha256'])
+            for api in (28,30,34):
+                info=e.Tools().inspect(apk,api)
+                self.assertEqual(info['package'],'llc.itdev.incy')
+                self.assertEqual(info['certificates'],[app['certificate']])
+                self.assertEqual(info['version'],381)
+                e.compatible(info,{'api':api,'abis':['armeabi-v7a','armeabi']})
+
     def test_actual_official_vimu_installer(self):
         app=e.read_json(e.ROOT/'catalog.json')['apps']['vimu']
         variant=e.choose_variant(app,['armeabi-v7a'])

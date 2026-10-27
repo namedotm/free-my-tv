@@ -1,6 +1,19 @@
 {
-  "ips": ["192.168.28.60", "", ""],
-  "apps": ["freemytv", "smarttube", "vlc"],
-  "folder": "",
-  "official_youtube": false
+  "ips": [
+    "192.168.28.60",
+    "192.168.31.232",
+    "192.168.31.20"
+  ],
+  "apps": [
+    "freemytv",
+    "smarttube",
+    "youtube",
+    "incy",
+    "vlc"
+  ],
+  "folder": "W:\\.intake",
+  "official_youtube": true,
+  "source_ip": "192.168.28.60:5555",
+  "sync_ui": false,
+  "protect_source": true
 }
