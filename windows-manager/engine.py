@@ -18,6 +18,15 @@ ROOT = Path(__file__).resolve().parent
 DATA = ROOT / 'data'
 APK_HASH = 'e15a7b9f0fce46ff90c6fd7d23f41b1689c6eaed755a4a50099096b2c36e8c04'
 ALLOWED_YOUTUBE = {'org.smarttube.stable', 'org.smarttube.beta', 'com.google.android.youtube.tv'}
+# The package SmartTube used before its signing key was exposed (December 2025).
+# Never added to favorites or VPN lists; removal stays the user's decision.
+OLD_SMARTTUBE = 'com.teamsmart.videomanager.tv'
+# Apps that must stay outside any tunnel: players, file managers, casting.
+LOCAL_APPS = {'org.videolan.vlc': 'VLC', 'net.gtvbox.videoplayer': 'Vimu', 'com.mxtech.videoplayer.ad': 'MX Player',
+              'com.mxtech.videoplayer.pro': 'MX Player Pro', 'com.smartdevice.tv.aircast': 'AirCast',
+              'com.alphainventor.filemanager': 'File Commander', 'com.mobisystems.fileman': 'File Commander',
+              'nextapp.fx': 'FX File Explorer', 'com.xiaomi.mitv.smartshare': 'Miracast/Smart Share'}
+VPN_APPS = {'io.github.romanvht.byedpi': 'ByeByeDPI', 'llc.itdev.incy': 'INCY'}
 DOWNLOAD_HOSTS = {'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com',
                   'get.vimu.tv', 'vimu.tv', 'raw.githubusercontent.com', 'api.github.com', 'downloads.videolan.org', 'dl.google.com', 'api.nuget.org'}
 _CACHE_LOCK = threading.Lock()
@@ -59,6 +68,8 @@ def command_problem(output, tool='инструмент', returncode=None):
     for code, message in hints.items():
         if code.lower() in output.lower():
             return Problem(message, code=code, details=output)
+    if not output.strip() and returncode == 255 and tool == 'adb.exe':
+        return Problem('ADB потерял связь с ТВ: устройство offline, уснуло или сменило сеть. Включите экран ТВ, проверьте адрес и повторите шаг; изменения не выполнялись.', code='ADB_LOST')
     code = re.search(r'(INSTALL_(?:FAILED|PARSE_FAILED)_[A-Z_]+)', output)
     return Problem(f'Ошибка: {tool}' + (f' (код завершения {returncode})' if returncode is not None else '') + '. Откройте технические сведения ниже.',
                    code=code[1] if code else 'TOOL_FAILED', details=output)
@@ -206,8 +217,16 @@ def parse_badging(text):
     if not sdk and not split:
         raise Problem('В базовом APK не найдена минимальная версия Android. Нужна проверка манифеста.', code='APK_MIN_SDK', details=text)
     libs = re.search(r'native-code: (.+)', text)
+    target = re.search(r"^targetSdkVersion:\s*'(\d+)'", text, re.M)
+    label = re.search(r"^application-label(?:-ru)?:\s*'([^'\n]{1,120})'", text, re.M) or re.search(r"^application:\s*label='([^'\n]{1,120})'", text, re.M)
+    icons = sorted(((int(d), p) for d, p in re.findall(r"^application-icon-(\d+):'([^'\n]+)'", text, re.M)), reverse=True)
+    banner = re.search(r"^application:.*?banner='([^'\n]+)'", text, re.M)
     return {'package': fields['name'], 'version': int(fields['versionCode']), 'min_api': int(sdk[1]) if sdk else None,
-            'split': split, 'abis': re.findall(r"'([^']+)'", libs[1]) if libs else []}
+            'split': split, 'split_name': fields.get('split', ''), 'abis': re.findall(r"'([^']+)'", libs[1]) if libs else [],
+            'version_name': fields.get('versionName', ''), 'target_api': int(target[1]) if target else None,
+            'label': label[1] if label else '', 'icons': [p for _, p in icons] + ([banner[1]] if banner else []),
+            'leanback': 'leanback-launchable-activity' in text or 'android.software.leanback' in text,
+            'test_only': bool(re.search(r"^testOnly='-1'|^application-debuggable", text, re.M))}
 
 
 def certs(output):
@@ -241,6 +260,8 @@ class Tools:
                 java = list((self.home / 'jre').glob('*/bin/java.exe'))
             if not java:
                 raise Problem('Java не найдена после распаковки.')
+            if len(str(java[0].parent / 'server' / 'jvm.dll')) >= 250:
+                raise Problem('Папка менеджера лежит слишком глубоко: Java в Windows не запускается из путей длиннее 260 символов. Перенесите папку XiaomiTVManager, например, в C:\\XiaomiTVManager или на Рабочий стол.', code='PATH_TOO_LONG')
             self.java = java[0]
             self.aapt = self.home / 'android/android-14/aapt2.exe'
             self.jar = self.home / 'android/android-14/lib/apksigner.jar'
@@ -252,6 +273,11 @@ class Tools:
                 extract_zip(f, self.home / 'android')
             if not self.aapt.is_file() or not self.jar.is_file():
                 raise Problem('Android Build Tools 34 не найдены после распаковки.')
+
+    def badging(self, apk):
+        """Manifest facts only (aapt2 reads the file; nothing in it runs). Signatures are checked separately."""
+        self.ensure()
+        return parse_badging(run([self.aapt, 'dump', 'badging', apk], timeout=120))
 
     def inspect(self, apk, api=None, progress=None):
         self.ensure(progress)
@@ -292,6 +318,30 @@ class Device:
         if not s or 'Error' in s or 'Exception' in s:
             raise Problem('Не удалось получить список пакетов; установка остановлена для этого ТВ.')
         return sorted(set(re.findall(r'^package:([\w.]+)$', s, re.M)))
+
+    def uids(self):
+        s = self.shell('pm', 'list', 'packages', '-U', check=False)
+        return {p: int(u) for p, u in re.findall(r'^package:([\w.]+) uid:(\d+)', s, re.M)}
+
+    def home(self):
+        s = self.shell('cmd', 'package', 'resolve-activity', '--brief', '-a', 'android.intent.action.MAIN',
+                       '-c', 'android.intent.category.HOME', check=False)
+        found = re.findall(r'^\s*([A-Za-z][\w.]*/[\w.$]+)\s*$', s, re.M)
+        return found[-1] if found else ''
+
+    def installer(self, pkg):
+        s = self.shell('dumpsys', 'package', pkg, check=False)
+        m = re.search(r'installerPackageName=([\w.]+)', s)
+        return m[1] if m else ''
+
+    def vpn(self, uid_map=None):
+        dump = self.shell('dumpsys', 'connectivity', check=False, timeout=60)
+        return vpn_routing(parse_vpn(dump), self.uids() if uid_map is None else uid_map)
+
+    def interfaces(self):
+        """IPv4 per interface; tells whether ADB rides on Wi-Fi (forgetting that network drops it)."""
+        s = self.shell('ip', '-o', '-4', 'addr', check=False)
+        return {ip: name for name, ip in re.findall(r'^\d+:\s+(\w+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)', s, re.M)}
 
     def free_space(self):
         s = self.shell('df', '-k', '/data')
@@ -334,16 +384,39 @@ class Device:
         versions = self.shell('dumpsys', 'package', 'packages')
         abi = props['ro.product.cpu.abilist'] or props['ro.product.cpu.abi']
         identity = self.identity(props)
-        return {'address': self.address, 'properties': props, 'model': props['ro.product.model'],
-                'android': props['ro.build.version.release'], 'api': api, 'abis': abi.split(','),
-                'identity': identity, 'identity_kind':'android-id+serial', 'packages': packages, 'versions': versions,
-                'free_bytes': self.free_space(), 'before': self.measures(),
-                'recommendations': self.recommendations(packages)}
+        uid_map = self.uids()
+        try:
+            vpn = self.vpn(uid_map)
+        except Problem as exc:
+            vpn = {'active': None, 'scope': 'unknown', 'ok': None, 'message': 'Состояние VPN не прочитано: ' + str(exc)}
+        measures = self.measures()
+        report = {'address': self.address, 'properties': props, 'model': props['ro.product.model'],
+                  'manufacturer': props['ro.product.manufacturer'],
+                  'android': props['ro.build.version.release'], 'api': api, 'abis': abi.split(','),
+                  'identity': identity, 'identity_kind': 'android-id+serial', 'device_key': device_key(props),
+                  'packages': packages, 'versions': versions, 'home': self.home(), 'vpn': vpn, 'uids': uid_map,
+                  'interfaces': self.interfaces(),
+                  'free_bytes': self.free_space(), 'ram_available_kb': ram_available(measures.get('memory', '')),
+                  'ram_total_kb': ram_total(measures.get('memory', '')), 'before': measures}
+        report['recommendations'] = self.recommendations(packages, vpn)
+        if report['free_bytes'] < 600 * 1048576:
+            report['recommendations']['warnings'].append(
+                f"Мало места во внутренней памяти: {report['free_bytes'] // 1048576} МБ. Большие APK могут не установиться: сначала посмотрите раздел «Приложения и очистка» (кэш и неиспользуемые сторонние приложения).")
+        return report
 
     @staticmethod
-    def recommendations(packages):
+    def recommendations(packages, vpn=None):
         candidates = [p for p in packages if any(w in p.lower() for w in ['telemetry', 'analytics', 'advert', 'demo'])]
-        return {'unverified_candidates': candidates, 'note': 'Совпадение имени — не доказательство ненужности. Ничего не отключено. Каждый пакет требует анализа служб, разрешений, зависимостей и отдельного согласия.'}
+        warnings = []
+        if OLD_SMARTTUBE in packages:
+            warnings.append('Найден старый SmartTube (' + OLD_SMARTTUBE + '), подписанный прежним ключом разработчика, который был скомпрометирован в декабре 2025. Менеджер его не трогает и не добавляет в избранное/VPN. Проверьте новый org.smarttube.stable и удалите старый осознанно в разделе «Приложения».')
+        if vpn and vpn.get('ok') is False:
+            warnings.append(vpn['message'] + ' Остановите VPN на ТВ и настройте белый список до повторного включения.')
+        active_vpn_apps = [VPN_APPS[p] for p in VPN_APPS if p in packages]
+        if len(active_vpn_apps) > 1:
+            warnings.append('Установлены ' + ' и '.join(active_vpn_apps) + '. Android держит только один активный VPN: включайте одно приложение для SmartTube/YouTube.')
+        return {'unverified_candidates': candidates, 'warnings': warnings,
+                'note': 'Совпадение имени — не доказательство ненужности. Ничего не отключено. Каждый пакет требует анализа служб, разрешений, зависимостей и отдельного согласия.'}
 
     def installed(self, pkg, folder, api, progress=None):
         if pkg not in self.packages():
@@ -376,6 +449,83 @@ class Device:
             raise Problem('Версии базового APK и его частей различаются; обновление пропущено.', code='APK_SPLIT_VERSION')
         save_json(folder / 'metadata.json', {'package': pkg, 'parts': result, 'paths': paths})
         return base
+
+
+def ram_available(meminfo):
+    """MemAvailable in kB: free RAM, unrelated to free /data storage."""
+    m = re.search(r'^MemAvailable:\s+(\d+) kB', meminfo or '', re.M)
+    return int(m[1]) if m else None
+
+
+def ram_total(meminfo):
+    m = re.search(r'^MemTotal:\s+(\d+) kB', meminfo or '', re.M)
+    return int(m[1]) if m else None
+
+
+def device_key(props):
+    """Stable per-device key: serial and model, not IP and not the build (an OTA must not hide the source)."""
+    serial = props.get('ro.serialno', '').strip()
+    if not serial or serial in ('unknown', 'null'):
+        return ''
+    return hashlib.sha256(('serial:' + serial + '|model:' + props.get('ro.product.model', '')).encode()).hexdigest()
+
+
+def parse_uid_ranges(text):
+    """'<{0-10012, 10014-20012}>' -> [(0, 10012), (10014, 20012)]."""
+    return [(int(a), int(b or a)) for a, b in re.findall(r'(\d+)(?:-(\d+))?', text)]
+
+
+def parse_vpn(dump):
+    """Active VPN networks from `dumpsys connectivity`. Read-only; Android 9 to 14 formats."""
+    result = []
+    for line in dump.splitlines():
+        if 'NetworkAgentInfo{' not in line:
+            continue
+        transports = re.search(r'Transports: ([A-Z|]+)', line)
+        if not transports or 'VPN' not in transports[1].split('|'):
+            continue
+        uids = re.search(r'Uids: <\{([^}]*)\}>', line)
+        owner = re.search(r'OwnerUid: (\d+)', line)
+        session = re.search(r'sessionId=([^,}]+)', line)
+        result.append({'uid_ranges': parse_uid_ranges(uids[1]) if uids else None,
+                       'owner_uid': int(owner[1]) if owner else None,
+                       'session': session[1].strip() if session else '',
+                       'interface': (re.search(r'InterfaceName: (\S+)', line) or [None, ''])[1]})
+    return result
+
+
+def vpn_routing(vpns, uid_map, allowed=ALLOWED_YOUTUBE):
+    """Which known apps a VPN actually covers. A per-app tunnel lists only allowed apps' UIDs."""
+    if not vpns:
+        return {'active': False, 'scope': 'none', 'ok': None,
+                'message': 'Активного VPN нет. Маршрутизацию можно проверить только после того, как вы включите VPN на ТВ.'}
+    vpn = vpns[0]
+    owner = next((p for p, u in uid_map.items() if u == vpn['owner_uid']), None) if vpn['owner_uid'] is not None else None
+    name = VPN_APPS.get(owner, owner or vpn['session'] or 'неизвестное приложение')
+    if vpn['uid_ranges'] is None:
+        return {'active': True, 'owner': owner, 'name': name, 'scope': 'unknown', 'ok': None,
+                'message': f'Активен VPN ({name}), но Android не показал список UID. Маршрутизация не подтверждена.'}
+    def covered(uid):
+        return any(a <= uid <= b for a, b in vpn['uid_ranges'])
+    size = sum(b - a + 1 for a, b in vpn['uid_ranges'])
+    inside = sorted(p for p, u in uid_map.items() if covered(u))
+    local = sorted(LOCAL_APPS.get(p, p) for p in inside if p in LOCAL_APPS)
+    extra = [p for p in inside if p not in allowed and p not in VPN_APPS]
+    chosen = [p for p in inside if p in allowed]
+    if size > 50000 or covered(1000):
+        scope, ok = 'global', False
+        message = f'Активен глобальный VPN ({name}): через туннель идут все приложения' + (', включая ' + ', '.join(local) if local else '') + '. Это не соответствует требованию «только SmartTube/YouTube».'
+    elif extra:
+        scope, ok = 'per-app', False
+        message = f'VPN ({name}) охватывает лишние приложения: ' + ', '.join(LOCAL_APPS.get(p, p) for p in extra[:12]) + '.'
+    elif not chosen:
+        scope, ok = 'per-app', False
+        message = f'VPN ({name}) активен, но SmartTube/YouTube в нём нет.'
+    else:
+        scope, ok = 'per-app', True
+        message = f'VPN ({name}) охватывает только: ' + ', '.join(chosen) + '. Медиаплееры, AirCast и остальной трафик идут обычным путём. Воспроизведение проверьте на ТВ.'
+    return {'active': True, 'owner': owner, 'name': name, 'scope': scope, 'ok': ok, 'inside': chosen,
+            'local_inside': local, 'extra': extra[:50], 'message': message}
 
 
 def choose_variant(app, abis):
@@ -426,6 +576,12 @@ def install_app(device, report, key, app, tools, folder, event, progress=None):
     old = device.installed(info['package'], Path(folder) / 'backups' / key, report['api'], progress=emit)
     if old:
         if old['certificates'] != info['certificates']:
+            store = app.get('store', {})
+            if store and old['certificates'] == store.get('certificates') and device.installer(info['package']) == store.get('installer'):
+                # The developer's own Google Play edition: official, re-signed by Play, updated by Play.
+                return {'status': 'done', 'already_installed': True, 'package': info['package'], 'version': old['version'],
+                        'certificate': old['certificates'][0], 'channel': 'google-play',
+                        'message': 'Установлена официальная версия из Google Play (подпись магазина). Она обновляется через Google Play; APK с сайта поверх неё не ставится.'}
             return {'status': 'skipped', 'message': 'Конфликт сертификатов: существующая версия сохранена. Переход — вручную после резервного копирования; не удаляйте работающий Home.'}
         if old['version'] >= info['version']:
             return {'status': 'done', 'already_installed': True, 'package': info['package'],

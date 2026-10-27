@@ -88,7 +88,12 @@
           "sha256": "4646633ede40c4784c5584087cffc5c60cc45b16966ae0b36cedd784d7c4a11e"
         }
       },
-      "certificate": "c8768d2cea0c4b622e419b4b4715981946821e4ebc035fb41776cad395a7f68e"
+      "certificate": "c8768d2cea0c4b622e419b4b4715981946821e4ebc035fb41776cad395a7f68e",
+      "store": {
+        "installer": "com.android.vending",
+        "certificates": ["7dbd54b214eb5ee9c0f22f97ab9849aa9686f4153f32f4696b438eec9b787a0a"],
+        "note": "VLC из Google Play (App Bundle, подпись магазина). Наблюдалась на Mi Box S (Android 11/14) и проекторе: versionName 3.7.1. Обновляется через Google Play."
+      }
     },
     "vimu": {
       "label": "Vimu Installer",

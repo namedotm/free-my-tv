@@ -320,13 +320,14 @@ class RegressionTests(unittest.TestCase):
     def test_error_is_not_reported_as_all_successful(self):
         class D:
             def __init__(self,*a):pass
-            def diagnose(self):return {'model':'Box','android':'14','api':34,'abis':['armeabi-v7a'],'identity':'id','free_bytes':500000000}
+            def diagnose(self):return {'model':'Box','android':'14','api':34,'abis':['armeabi-v7a'],'identity':'id','device_key':'box','free_bytes':500000000}
             def measures(self):return {}
         def fail(*a,**k):
             k['progress']('install','Передача APK')
             raise e.command_problem('Failure [INSTALL_FAILED_USER_RESTRICTED]','adb')
         with tempfile.TemporaryDirectory() as td,patch('app.Device',D),patch('app.install_app',side_effect=fail):
             m=gui.Manager(td,FakeTools(td));a='192.168.1.2:5555'
+            m.source_device={'device_key':'projector'}
             m.device_work(a,['freemytv'],'install',False)
             row=m.snapshot()['rows'][a]
             self.assertEqual(row['status'],'error');self.assertIn('Завершено с ошибками',row['message'])

@@ -51,6 +51,34 @@ def plan(info,state=None):
     return result
 
 
+VIDEO=('.mkv','.mp4','.avi','.mov','.m4v','.ts','.m2ts','.webm','.wmv','.mpg','.mpeg')
+
+
+def pick_test_file(folder, limit=4000):
+    """The smallest video file in the shared folder (two levels deep), as a path relative to it."""
+    root=Path(folder)
+    if not root.is_dir():raise Problem('Папка медиатеки недоступна.',code='FOLDER_MISSING')
+    best=None;seen=0
+    for depth in ('*','*/*','*/*/*'):
+        for p in root.glob(depth):
+            seen+=1
+            if seen>limit:break
+            try:
+                if p.is_file() and p.suffix.lower() in VIDEO and not p.is_symlink():
+                    size=p.stat().st_size
+                    if size>0 and (best is None or size<best[0]):best=(size,p)
+            except OSError:continue
+    if not best:raise Problem('В папке не найдено видеофайлов (mkv, mp4, avi…). Положите туда короткий ролик для проверки.',code='MEDIA_NO_FILE')
+    return best[1].relative_to(root).as_posix()
+
+
+def test_uri(info, folder):
+    relative=pick_test_file(folder)
+    parts=[p for p in relative.split('/') if p]
+    if any(p in ('.','..') for p in parts):raise Problem('Неверный путь файла.',code='MEDIA_URI')
+    return info['uri'].rstrip('/')+'/'+'/'.join(urllib.parse.quote(p,safe='') for p in parts)
+
+
 def inspect(path, remote_ip=None):
     if os.name!='nt':raise Problem('Проверка W:\\.intake доступна на вашем Windows-компьютере.',code='WINDOWS_ONLY')
     if not isinstance(path,str) or len(path)>1000 or not (re.match(r'^[A-Za-z]:\\',path) or path.startswith('\\\\')):
