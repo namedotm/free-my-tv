@@ -109,6 +109,8 @@ class Manager:
                 if not components:
                     raise Problem('Не удалось определить TV Activity VLC; запуск не выполнялся.')
                 timing = d.shell('am', 'start', '-W', '-n', components[-1], timeout=90)
+                if not re.search(r'^Status: ok', timing, re.M):
+                    raise Problem('Android не подтвердил запуск VLC; время запуска не считается измеренным.')
                 save_json(folder / 'launch-vlc.json', {'output': timing, 'cold_start': False, 'note': 'Без force-stop и очистки кэша. Состояние процесса неизвестно; это не доказательство ускорения.'})
                 self.event(address, 'Замер запуска VLC сохранён в отчёт. Приложение открыто на ТВ; настройки Home не менялись.')
             elif action == 'profile':
@@ -127,7 +129,9 @@ class Manager:
                             if pkg in d.packages():
                                 apps[key] = {'status': 'done', 'message': 'Уже установлено; магазин не открывался.'}
                             else:
-                                d.shell('am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'market://details?id=' + pkg)
+                                opened = d.shell('am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'market://details?id=' + pkg)
+                                if re.search(r'Error:|Exception|unable to resolve|No Activity', opened, re.I):
+                                    raise Problem('На ТВ нет доступного официального магазина; автоматическая установка этого приложения пропущена.')
                                 apps[key] = {'status': 'manual', 'message': 'Открыт официальный магазин на ТВ. Покупка/установка подтверждается вами; лицензия не обходится.'}
                         else:
                             apps[key] = install_app(d, report, key, self.catalog['apps'][key], self.tools, folder,
@@ -160,6 +164,10 @@ class Manager:
             self.event(address, 'Непредвиденная ошибка. Проверьте доступ к каталогу данных и повторите проверку.')
 
     def make_profile(self, d, report, folder, official):
+        installed = d.installed('io.github.romanvht.byedpi', folder / 'profile-target', report['api'])
+        expected = self.catalog['apps']['byedpi']['certificate']
+        if not installed or installed['version'] != 1820 or installed['certificates'] != [expected]:
+            raise Problem('Профиль рассчитан только на проверенную ByeByeDPI 1.8.2 с официальной подписью. Сначала установите её; другую версию автоматически не перенастраиваем.')
         profile = vpn_profile(d.packages(), official)
         local = folder / 'XiaomiTV-YouTube-only.json'
         save_json(local, profile)

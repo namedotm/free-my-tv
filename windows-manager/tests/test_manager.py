@@ -170,11 +170,12 @@ class JobsTests(unittest.TestCase):
     def test_profile_only_pushes_file_does_not_start_vpn(self):
         class D:
             address='192.168.1.2:5555'
+            def installed(self,*args):return {'version':1820,'certificates':['77451075acea406406475d74d459883a49a64051faf32e42f718f3f9777a8dfb']}
             def packages(self):return ['org.smarttube.stable']
             def adb(self,*args):self.command=args
         with tempfile.TemporaryDirectory() as td:
             m=gui.Manager(td,FakeTools(td));folder=Path(td)/'123';folder.mkdir();d=D()
-            m.make_profile(d,{},folder,False)
+            m.make_profile(d,{'api':28},folder,False)
             self.assertEqual(d.command[0],'push')
             self.assertTrue(d.command[-1].startswith('/sdcard/Download/'))
             self.assertFalse(e.read_json(folder/'vpn-profile.json')['verified'])
