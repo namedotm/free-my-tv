@@ -11,6 +11,8 @@ import sys
 import tempfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import profiles
+import applications
+from engine import Device, parse_badging, certs
 
 
 def command(args,timeout=120,env=None):
@@ -55,6 +57,34 @@ public class Probe extends android.app.Instrumentation {
         print('Unrelated Android app UID correctly denied access.')
 
 
+def check_app_management(sdk):
+    class SDKTools:
+        def inspect(self,path,api,**kwargs):
+            bt=sdk/'build-tools/34.0.0'
+            info=parse_badging(command([bt/'aapt2','dump','badging',path]))
+            info['certificates']=certs(command([bt/'apksigner','verify','--min-sdk-version',str(api),'--print-certs',path]))
+            return info
+    class TestDevice(Emulator):
+        address='emulator-5554'
+        tools=SDKTools()
+        packages=Device.packages
+        installed=Device.installed
+        def adb(self,*args,**kwargs):return command(['adb',*args],timeout=240)
+    device=TestDevice();report={'api':30,'identity':'disposable-emulator'}
+    pkg='io.freemytv.profileprobe'
+    with tempfile.TemporaryDirectory() as tmp:
+        disabled=applications.execute(device,report,'disable',[pkg],Path(tmp)/'disable')
+        assert applications.enabled_state(device,pkg)==3
+        applications.rollback(device,report,disabled,Path(tmp)/'disable')
+        assert applications.enabled_state(device,pkg)==0
+        removed=applications.execute(device,report,'uninstall_keep_data',[pkg],Path(tmp)/'remove')
+        assert pkg not in device.packages()
+        applications.rollback(device,report,removed,Path(tmp)/'remove')
+        assert pkg in device.packages()
+        assert applications.enabled_state(device,pkg)==0
+    print('Real Android third-party disable/default-state rollback and APK backup/uninstall-keep-data/restore passed.')
+
+
 def main():
     serials=command(['adb','devices']).splitlines()[1:]
     assert len([s for s in serials if s.strip()])==1 and any(s.startswith('emulator-') for s in serials),'Disposable emulator only'
@@ -97,6 +127,9 @@ def main():
     assert home==restored_home,('UI profile changed the chosen Home',home,restored_home)
     assert access==d.shell('settings','get','secure','enabled_accessibility_services'),'Accessibility changed'
     probe_other_uid(Path(os.environ['ANDROID_HOME']))
+    check_app_management(Path(os.environ['ANDROID_HOME']))
+    assert current_home()==home,'App management changed HOME'
+    assert access==d.shell('settings','get','secure','enabled_accessibility_services'),'App management changed accessibility'
     print('Real Android profile export/apply/validation/restore passed; Home and accessibility unchanged.')
 
 if __name__=='__main__':main()

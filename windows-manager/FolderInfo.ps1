@@ -21,4 +21,6 @@ if($RemoteIP){
     $preferred=@(Find-NetRoute -RemoteIPAddress $RemoteIP -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -and $_.IPAddress -in $addresses } | Select-Object -ExpandProperty IPAddress)
     $addresses=@(@($preferred)+@($addresses) | Select-Object -Unique)
 }
-@{kind=$kind;path=$path;exists=$exists;remote=$remote;computer=$env:COMPUTERNAME;addresses=$addresses} | ConvertTo-Json -Depth 4 -Compress
+$shares=$null
+try {$shares=@(Get-CimInstance Win32_Share -ErrorAction Stop | Select-Object Name,Path)} catch {}
+@{shares=$shares;kind=$kind;path=$path;exists=$exists;remote=$remote;computer=$env:COMPUTERNAME;addresses=$addresses} | ConvertTo-Json -Depth 4 -Compress

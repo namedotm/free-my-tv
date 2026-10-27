@@ -13,7 +13,7 @@ const openedDetails = new Set();
 const logLines = [];
 let profileBase=null, profileStamp="";
 function log(message) { logLines.push(new Date().toLocaleTimeString('ru') + '  ' + message); if(logLines.length>500)logLines.shift(); $('log').textContent=logLines.join('\n'); $('log').scrollTop=$('log').scrollHeight; }
-function payload() { return { ips: [0,1,2].map(i => $('ip'+i).value.trim()), folder: $('folder').value.trim(), apps: Array.from(document.querySelectorAll('[name=app]:checked')).map(x => x.value), official_youtube: $('official').checked, source_ip:$('source-ip').value.trim(), sync_ui:$('sync-ui').checked }; }
+function payload() { return { ips: [0,1,2].map(i => $('ip'+i).value.trim()), folder: $('folder').value.trim(), apps: Array.from(document.querySelectorAll('[name=app]:checked')).map(x => x.value), official_youtube: $('official').checked, source_ip:$('source-ip').value.trim(), sync_ui:$('sync-ui').checked, media_player:$('media-player').value }; }
 async function api(path, data) {
   const r = await fetch(path, {method: data ? 'POST' : 'GET', headers: {'X-Manager-Token': token, 'Content-Type':'application/json'}, body: data ? JSON.stringify(data) : undefined});
   const b = await r.json(); if (!r.ok) throw Error(b.error || 'Нет доступа. Перезапустите START.bat и используйте открывшееся окно.'); return b;
@@ -32,7 +32,7 @@ async function smb(restore) {
   if (restore && !confirm('Удалить только созданные менеджером SMB-ресурсы? Фильмы и приложения останутся. Windows запросит UAC.')) return;
   try { log((await api(restore ? '/restore' : '/smb', payload())).message); } catch(e) {log(e.message);}
 }
-for (const name of ['check','measure','retry','install','profile','read_source','sync_ui','restore_ui','open_incy']) $(name).addEventListener('click', () => action(name));
+for (const name of ['check','measure','retry','install','profile','read_source','sync_ui','restore_ui','open_incy','diagnose_home','network_profile','existing_setup','open_media']) $(name).addEventListener('click', () => action(name));
 $('browse').addEventListener('click', async () => { try { const r = await api('/folder',{}); if(r.message) $('folder').value = r.message; }catch(e){log(e.message);} });
 $('smb').addEventListener('click', () => smb(false)); $('restore').addEventListener('click', () => smb(true));
 function node(tag, text, cls) { const n = document.createElement(tag); if(text) n.textContent=text; if(cls)n.className=cls; return n; }
@@ -85,13 +85,13 @@ async function poll() {
     if(s.source_profile && stamp!==profileStamp){ profileStamp=stamp;profileBase=JSON.parse(stamp);const p=profileBase.settings; $('profile-language').value=p.language || 'ru';$('profile-theme').value=p.theme || 'auto';$('profile-temperature').value=p.temperature || 'C';$('profile-shelf').value=(p.shelf || []).join('\n'); }
     const packages=s.source_packages || [];
     if($('source-apps').dataset.packages!==packages.join(',')){ $('source-apps').replaceChildren(); for(const pkg of packages){const opt=node('option',pkg);opt.value=pkg;$('source-apps').append(opt);} $('source-apps').dataset.packages=packages.join(','); }
-    for (const id of ['check','measure','retry','install','profile','smb','restore','browse','read_source','sync_ui','restore_ui','open_incy','save-profile','media-info']) $(id).disabled=s.busy;
+    for (const id of ['check','measure','retry','install','profile','smb','restore','browse','read_source','sync_ui','restore_ui','open_incy','save-profile','media-info','diagnose_home','network_profile','existing_setup','open_media','apps-scan','apps-plan','apps-undo']) $(id).disabled=s.busy;
     const area = $('devices'); area.replaceChildren();
     let done=0, errors=0, manual=0, skipped=0, processed=0, total=0;
     for (const [ip,d] of Object.entries(s.rows)) {
       const card=node('article',null,'device '+d.status);
       const title=node('div',null,'device-title');title.append(node('strong',ip+(d.model?' · '+d.model:'')),node('span',states[d.status] || 'Проверка','state '+d.status));card.append(title);
-      if(d.android)card.append(node('div',`Android ${d.android} · API ${d.api} · ${(d.abis || []).join(', ')} · свободно ${d.free_mb} МБ`,'details'));
+      if(d.android)card.append(node('div',`Android ${d.android} · API ${d.api} · ${(d.abis || []).join(', ')} · свободно в хранилище /data ${d.free_mb} МБ`,'details'));
       const count=d.total_apps || 0;
       if(count) {
         card.append(node('p',`Обработано ${d.processed || 0} из ${count} шагов. Полоса показывает обработку, а не число успешных установок.`,'progress-label'));
@@ -103,6 +103,8 @@ async function poll() {
         if(r.status==='done')done++;else if(r.status==='error')errors++;else if(r.status==='manual')manual++;else if(r.status==='skipped')skipped++;
       }
       if(d.status==='error' && !Object.values(d.apps || {}).some(task=>task.status==='error'))errors++;
+      if(d.launcher_diagnosis){const diag=d.launcher_diagnosis; const detail=node('details'); detail.open=openedDetails.has('home:'+ip);detail.addEventListener('toggle',()=>detail.open?openedDetails.add('home:'+ip):openedDetails.delete('home:'+ip)); detail.append(node('summary','Диагностика Free My TV: Wi-Fi и профиль'),node('p',diag.explanation),node('p','Владельцы сохранённых сетей: '+(diag.wifi_owner_packages.join(', ') || 'не обнаружены / неизвестно')));if(diag.owned_network_ids?.length)detail.append(node('p','ID записей блокировщика (сети не удалялись): '+diag.owned_network_ids.map(n=>n.network_id+' · '+n.owner).join('; ')));for(const step of diag.steps)detail.append(node('p',step));card.append(detail);}
+      if(d.media_result){const m=d.media_result;card.append(node('p',m.pc_tcp.message),node('p',m.tv_tcp.message),node('p','Папка: '+m.media.uri+' · пользователь: '+m.media.username),node('p',m.player.message));}
       technical(card,ip,d); area.append(card);
     }
     $('summary').replaceChildren();
@@ -136,3 +138,27 @@ $('media-info').addEventListener('click',async()=>{
   }
  }catch(e){box.replaceChildren(node('p',e.message,'warning'));}
 });
+
+let appRows=[], appAddress='', appSelected=new Set();
+function renderApps(){
+ const box=$('apps-list');box.replaceChildren();const search=$('apps-search').value.toLowerCase(), filter=$('apps-filter').value;
+ for(const row of appRows){
+  if(!(row.label+' '+row.package).toLowerCase().includes(search))continue;
+  if(filter==='third' && row.protected || filter==='system' && !row.protected || filter==='disabled' && !row.disabled || filter==='removed' && row.installed || filter==='candidates' && !row.candidate)continue;
+  const card=node('div',null,'app-row');const label=node('label');const checkbox=node('input');checkbox.type='checkbox';checkbox.disabled=row.protected;checkbox.checked=appSelected.has(row.package);checkbox.addEventListener('change',()=>checkbox.checked?appSelected.add(row.package):appSelected.delete(row.package));label.append(checkbox,node('strong',row.label));card.append(label,node('p',row.package),node('p',(row.installed?(row.disabled?'Отключено':'Установлено'):'Удалённая запись')+' · '+(row.system?'Системное':'Стороннее')+' · '+row.reason));
+  if(row.installed){const button=node('button','Настройки на ТВ');button.addEventListener('click',async()=>{try{log((await api('/apps',{mode:'settings',address:appAddress,package:row.package})).message);}catch(e){log(e.message);}});card.append(button);}
+  box.append(card);
+ }
+}
+$('apps-search').addEventListener('input',renderApps);$('apps-filter').addEventListener('change',renderApps);
+$('apps-device').addEventListener('change',()=>{appRows=[];appSelected.clear();appAddress='';renderApps();$('apps-status').textContent='Прочитайте список выбранного устройства заново.';});
+async function appsRequest(data){$('apps-status').textContent='Выполняется, дождитесь ответа…';try{const result=await api('/apps',data);$('apps-status').textContent=result.message || 'Операция завершена';if(result.rows){appRows=result.rows;appAddress=result.address;appSelected.clear();renderApps();}return result;}catch(e){$('apps-status').textContent=e.message;throw e;}}
+$('apps-scan').addEventListener('click',async()=>{try{await appsRequest({mode:'scan',address:$('ip'+$('apps-device').value).value.trim()});}catch(e){log(e.message);}});
+$('apps-plan').addEventListener('click',async()=>{
+ try{if(!appAddress)throw Error('Сначала прочитайте список приложений.');const operation=$('apps-operation').value;const r=await appsRequest({mode:'plan',address:appAddress,operation,packages:[...appSelected]});
+  if(!confirm(r.message+'\n\nДействие: '+$('apps-operation').selectedOptions[0].textContent+'\nУстройство: '+appAddress+'\n\n'+r.packages.join('\n')+'\n\nВыполнить только этот список?'))return;
+  const result=await appsRequest({mode:'apply',address:appAddress,plan:r.plan});showAppResult(result);
+ }catch(e){log(e.message);}
+});
+$('apps-undo').addEventListener('click',async()=>{try{const address=$('ip'+$('apps-device').value).value.trim();if(!confirm('Отменить последнюю операцию приложений этого менеджера на '+address+'? Версии, подписи и устройство проверяются; полная копия данных не создавалась.'))return;showAppResult(await appsRequest({mode:'undo',address}));}catch(e){log(e.message);}});
+function showAppResult(r){const box=$('apps-result');box.replaceChildren();if(r.metrics){const m=r.metrics,mb=v=>v==null?'не определено':(v/1048576).toFixed(1)+' МБ';box.append(node('p','Хранилище /data: '+mb(m.before_free_bytes)+' → '+mb(m.after_free_bytes)+'; разница: '+mb(m.storage_delta_bytes)),node('p','Доступная ОЗУ: '+mb(m.before_available_ram)+' → '+mb(m.after_available_ram)),node('p',m.note));}for(const e of r.changes?.entries || [])box.append(node('p',e.package+' · '+({disable:'Отключение',enable:'Включение',uninstall_keep_data:'Удаление APK с сохранением данных',restore:'Возврат записи'}[e.action] || e.action)+' · '+(e.restored?'Восстановлено':({done:'Подтверждено',error:'Ошибка',pending:'Нужно проверить',planned:'Не выполнялось'}[e.status] || e.status))+' · '+(e.message || '')));}
