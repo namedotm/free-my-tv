@@ -59,7 +59,7 @@ def main():
     serials=command(['adb','devices']).splitlines()[1:]
     assert len([s for s in serials if s.strip()])==1 and any(s.startswith('emulator-') for s in serials),'Disposable emulator only'
     d=Emulator()
-    home=d.shell('cmd','role','get-role-holders','android.app.role.HOME')
+    home=d.shell('cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME')
     access=d.shell('settings','get','secure','enabled_accessibility_services')
     artifact=Path(__file__).resolve().parents[2]/'artifacts/FreeMyTV-profiles.apk'
     command(['adb','install','-r',artifact])
@@ -78,7 +78,7 @@ def main():
     restored=profiles.restore(d)
     assert restored==before,(restored,before)
     assert profiles.restore(d)==before,'Restore must be idempotent'
-    assert home==d.shell('cmd','role','get-role-holders','android.app.role.HOME'),'Home role changed'
+    assert home==d.shell('cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME'),'Home role changed'
     assert access==d.shell('settings','get','secure','enabled_accessibility_services'),'Accessibility changed'
     probe_other_uid(Path(os.environ['ANDROID_HOME']))
     print('Real Android profile export/apply/validation/restore passed; Home and accessibility unchanged.')
