@@ -6,14 +6,14 @@
 <label>Mi Box S EU №2<input id="ip2" placeholder="Введите IP или IP:порт"></label></div>
 <p class="hint">ADB: C:\platform-tools\adb.exe. На ТВ включите отладку и разрешите подключение этому компьютеру. Пустые поля пропускаются.</p>
 <div class="buttons"><button id="check">Проверить подключения</button><button id="measure">Замерить запуск VLC</button><button id="retry">Повторить неудачные шаги</button></div>
-<div id="devices" aria-live="polite"></div></section>
-<section><h2>Приложения</h2><div class="choices">
+<div id="summary" class="summary" role="status"></div><div id="devices" aria-live="polite"></div></section>
+<section><h2>Приложения</h2><p>Free My TV, SmartTube, VLC и ByeByeDPI скачиваются и устанавливаются как APK автоматически. Vimu: автоматически устанавливается официальный Installer, затем установка плеера подтверждается на ТВ. MX Player пока устанавливается через официальный магазин.</p><div class="choices">
 <label><input type="checkbox" name="app" value="freemytv">Free My TV · кнопка сети</label>
 <label><input type="checkbox" name="app" value="smarttube">SmartTube · официальный релиз</label>
 <label><input type="checkbox" name="app" value="vlc">VLC · официальный VideoLAN</label>
 <label><input type="checkbox" name="app" value="byedpi">ByeByeDPI · установить без запуска VPN</label>
-<label><input type="checkbox" name="app" value="vimu">Vimu · открыть страницу покупки в магазине ТВ</label>
-<label><input type="checkbox" name="app" value="mx">MX Player · открыть официальный магазин ТВ</label></div>
+<label><input type="checkbox" name="app" value="vimu">Vimu · скачать и установить официальный Installer APK</label>
+<label><input type="checkbox" name="app" value="mx">MX Player · установка через официальный магазин</label></div>
 <p class="warning">При разных сертификатах обновление пропускается. Данные, Home, Original и watchdog не меняются. AirCast не устанавливается и не перенастраивается; Chromecast и Miracast не затрагиваются.</p>
 <p>SmartTube: разработчик сообщил о заражённой среде сборки и возможной компрометации ключей. Менеджер проверяет официальный SHA-256 и подпись конкретного релиза; это не гарантия отсутствия вредоносного кода.</p>
 <div class="choices"><label><input id="official" type="checkbox">Включить официальный YouTube в подготовленный белый список</label></div>

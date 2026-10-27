@@ -19,11 +19,49 @@ DATA = ROOT / 'data'
 APK_HASH = 'e15a7b9f0fce46ff90c6fd7d23f41b1689c6eaed755a4a50099096b2c36e8c04'
 ALLOWED_YOUTUBE = {'org.smarttube.stable', 'org.smarttube.beta', 'com.google.android.youtube.tv'}
 DOWNLOAD_HOSTS = {'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com',
-                  'raw.githubusercontent.com', 'api.github.com', 'downloads.videolan.org', 'dl.google.com', 'api.nuget.org'}
+                  'get.vimu.tv', 'vimu.tv', 'raw.githubusercontent.com', 'api.github.com', 'downloads.videolan.org', 'dl.google.com', 'api.nuget.org'}
 _CACHE_LOCK = threading.Lock()
 
 class Problem(Exception):
     """Safe, user-facing message, never include subprocess arguments containing secrets."""
+
+    def __init__(self, message, *, code='', details=''):
+        super().__init__(message)
+        self.code = code
+        self.details = safe_details(details)
+
+
+def safe_details(text):
+    text = re.sub(r'https?://\S+', '<HTTPS-адрес>', str(text))
+    text = re.sub(r'(?i)(?:gh[pousr]_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|(?:token|password|authorization)\s*[:=]\s*\S+)', '[скрыто]', text)
+    return text.strip()[:2400]
+
+
+def command_problem(output, tool='инструмент', returncode=None):
+    hints = {
+        'INSTALL_FAILED_USER_RESTRICTED': 'Android запретил установку. Проверьте запрос и разрешения установки на экране ТВ; защиту не отключайте.',
+        'INSTALL_FAILED_ABORTED': 'Установка отменена на ТВ или системным установщиком. Проверьте экран и повторите шаг.',
+        'INSTALL_FAILED_DEPRECATED_SDK_VERSION': 'Android отклонил APK с устаревшим target SDK. Нужна совместимая сборка; обход ограничения не выполняется.',
+        'INSTALL_FAILED_UPDATE_INCOMPATIBLE': 'Подписи не совпадают. Работающая версия сохранена; удаление и очистка данных не выполняются.',
+        'INSTALL_FAILED_INSUFFICIENT_STORAGE': 'Android сообщил о нехватке места. Освободите место вручную и повторите шаг.',
+        'INSTALL_FAILED_VERSION_DOWNGRADE': 'На ТВ более новая версия. Понижение и удаление приложения запрещены.',
+        'INSTALL_FAILED_NO_MATCHING_ABIS': 'APK не подходит архитектуре ТВ. Требуется другой официальный вариант APK.',
+        'INSTALL_FAILED_OLDER_SDK': 'APK требует более новую версию Android.',
+        'INSTALL_PARSE_FAILED': 'Android не смог разобрать APK. Проверьте технические сведения; файл не будет установлен повторно без проверки.',
+        'unauthorized': 'Подтвердите USB-отладку на экране ТВ и повторите шаг.',
+        'offline': 'ADB offline. Проверьте соединение с ТВ и повторите подключение.',
+        'device not found': 'ADB потерял подключение к ТВ. Проверьте IP, сеть и разрешение отладки.',
+        'failed to connect': 'Не удалось подключиться к ADB. Проверьте IP, порт и отладку на ТВ.',
+        'cannot connect': 'ADB недоступен по этому IP/порту. Проверьте сеть и отладку на ТВ.',
+        'Permission denied': 'Недостаточно прав для чтения APK или выполнения команды. Настройки и данные не изменялись.',
+        'DOES NOT VERIFY': 'Криптографическая проверка подписи APK не пройдена. Установка остановлена.',
+    }
+    for code, message in hints.items():
+        if code.lower() in output.lower():
+            return Problem(message, code=code, details=output)
+    code = re.search(r'(INSTALL_(?:FAILED|PARSE_FAILED)_[A-Z_]+)', output)
+    return Problem(f'Ошибка: {tool}' + (f' (код завершения {returncode})' if returncode is not None else '') + '. Откройте технические сведения ниже.',
+                   code=code[1] if code else 'TOOL_FAILED', details=output)
 
 
 def read_json(path, default=None):
@@ -80,20 +118,12 @@ def run(args, timeout=40, check=True):
                            encoding='utf-8', errors='replace', timeout=timeout,
                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     except subprocess.TimeoutExpired:
-        raise Problem('Время ожидания истекло. Проверьте экран ТВ, ADB и сеть; повторите шаг.') from None
-    except OSError:
-        raise Problem('Не удалось запустить инструмент. Проверьте наличие ADB/Java и права доступа.') from None
+        raise Problem('Время ожидания истекло. Проверьте экран ТВ и подключение. Перед повтором менеджер заново проверит установленную версию.', code='TIMEOUT') from None
+    except OSError as exc:
+        raise Problem('Не удалось запустить инструмент. Проверьте наличие ADB/Java и права доступа.', code='TOOL_START', details=str(exc)) from None
     output = r.stdout + '\n' + r.stderr
     if check and r.returncode:
-        hints = {'unauthorized': 'Подтвердите разрешение USB-отладки на экране ТВ.',
-                 'offline': 'ADB offline: проверьте соединение и повторите проверку.',
-                 'INSTALL_FAILED_UPDATE_INCOMPATIBLE': 'Подписи не совпадают; установленное приложение сохранено.',
-                 'INSTALL_FAILED_INSUFFICIENT_STORAGE': 'Недостаточно памяти; ничего не удаляйте автоматически.',
-                 'INSTALL_FAILED_VERSION_DOWNGRADE': 'На устройстве более новая версия; понижение запрещено.'}
-        for key, message in hints.items():
-            if key in output:
-                raise Problem(message)
-        raise Problem('Инструмент завершился с ошибкой. Проверьте ADB, совместимость APK и разрешения на ТВ.')
+        raise command_problem(output, Path(str(args[0])).name, r.returncode)
     return output.strip()
 
 
@@ -109,32 +139,43 @@ def check_url(url):
         raise Problem('Источник загрузки не входит в список официальных разрешённых адресов.')
 
 
-def download(url, path, expected, algorithm='sha256'):
+def download(url, path, expected, algorithm='sha256', progress=None):
     check_url(url)
     if not re.fullmatch(r'[a-f0-9]{' + ('64' if algorithm == 'sha256' else '40') + '}', expected):
         raise Problem('Нет доверенной контрольной суммы; загрузка пропущена.')
     path = Path(path)
+    notify = progress or (lambda *args, **kwargs: None)
+    notify('download', 'Ожидание очереди загрузки', waiting=True)
     with _CACHE_LOCK:
         if path.exists() and digest(path, algorithm) == expected:
+            notify('download', 'Файл уже скачан; контрольная сумма проверена', received=path.stat().st_size, total=path.stat().st_size, cached=True)
             return path
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix('.partial')
         try:
             opener = urllib.request.build_opener(HTTPSOnly())
             with opener.open(url, timeout=40) as response, tmp.open('wb') as f:
-                total = 0
+                received = 0
+                length = response.headers.get('Content-Length') if hasattr(response, 'headers') else None
+                total = int(length) if length and length.isdigit() else None
+                notified = 0
+                notify('download', 'Скачивание APK', received=0, total=total)
                 while b := response.read(1024 * 1024):
-                    total += len(b)
-                    if total > 600 * 1024 * 1024:
+                    received += len(b)
+                    if received > 600 * 1024 * 1024:
                         raise Problem('Размер загрузки превышает ожидаемый предел.')
                     f.write(b)
+                    if time.monotonic() - notified >= .2:
+                        notify('download', 'Скачивание файла', received=received, total=total)
+                        notified = time.monotonic()
+                notify('download', 'Загрузка завершена; проверка SHA-256', received=received, total=total)
             if digest(tmp, algorithm) != expected:
                 raise Problem('Контрольная сумма не совпала. Файл не использован.')
             tmp.replace(path)
         except Problem:
             raise
-        except Exception:
-            raise Problem('Не удалось скачать файл по HTTPS. Проверьте интернет; сохранённые APK не удалены.') from None
+        except Exception as exc:
+            raise Problem('Не удалось скачать файл по HTTPS. Проверьте интернет; сохранённые APK не удалены.', code='DOWNLOAD_FAILED', details=str(exc)) from None
         finally:
             tmp.unlink(missing_ok=True)
     return path
@@ -152,13 +193,21 @@ def extract_zip(archive, destination):
 
 
 def parse_badging(text):
-    pkg = re.search(r"package: name='([^']+)' versionCode='(\d+)'", text)
-    sdk = re.search(r"sdkVersion:'(\d+)'", text)
-    if not pkg or not sdk:
-        raise Problem('Не удалось определить пакет, API или версию APK.')
+    header = re.search(r'^package:\s*(.+)$', text, re.M)
+    fields = dict(re.findall(r"([\w]+)='([^']*)'", header[1])) if header else {}
+    sdk = re.search(r"^sdkVersion:\s*'([^']+)'", text, re.M)
+    split = bool(fields.get('split'))
+    if not fields.get('name') or not fields.get('versionCode', '').isdigit():
+        raise Problem('Не удалось прочитать пакет или versionCode APK. Откройте технические сведения.', code='APK_METADATA', details=text)
+    # A config split does not have to repeat uses-sdk from its base. Its API
+    # compatibility is checked against the base APK, never guessed from the split.
+    if sdk and not sdk[1].isdigit():
+        raise Problem('APK требует предварительную/неизвестную версию Android.', code='APK_PREVIEW_SDK', details=sdk[0])
+    if not sdk and not split:
+        raise Problem('В базовом APK не найдена минимальная версия Android. Нужна проверка манифеста.', code='APK_MIN_SDK', details=text)
     libs = re.search(r'native-code: (.+)', text)
-    return {'package': pkg[1], 'version': int(pkg[2]), 'min_api': int(sdk[1]),
-            'abis': re.findall(r"'([^']+)'", libs[1]) if libs else []}
+    return {'package': fields['name'], 'version': int(fields['versionCode']), 'min_api': int(sdk[1]) if sdk else None,
+            'split': split, 'abis': re.findall(r"'([^']+)'", libs[1]) if libs else []}
 
 
 def certs(output):
@@ -175,7 +224,7 @@ class Tools:
         self.home = ROOT / 'runtime'
         self.lock = threading.Lock()
 
-    def ensure(self):
+    def ensure(self, progress=None):
         with self.lock:
             if os.name != 'nt':
                 self.java = Path('/workspace/jdk/jdk-17.0.21+9/bin/java')
@@ -186,7 +235,8 @@ class Tools:
             self.home.mkdir(exist_ok=True)
             java = list((self.home / 'jre').glob('*/bin/java.exe'))
             if not java:
-                f = download(d['jre']['url'], self.data / 'cache/jre.zip', d['jre']['sha256'])
+                notify = (lambda stage, msg, **meta: progress('tools', 'Подготовка Java: ' + msg, **meta)) if progress else None
+                f = download(d['jre']['url'], self.data / 'cache/jre.zip', d['jre']['sha256'], progress=notify)
                 extract_zip(f, self.home / 'jre')
                 java = list((self.home / 'jre').glob('*/bin/java.exe'))
             if not java:
@@ -195,16 +245,19 @@ class Tools:
             self.aapt = self.home / 'android/android-14/aapt2.exe'
             self.jar = self.home / 'android/android-14/lib/apksigner.jar'
             if not self.aapt.is_file() or not self.jar.is_file():
-                f = download(d['android']['url'], self.data / 'cache/android.zip', d['android']['sha256'])
+                notify = (lambda stage, msg, **meta: progress('tools', 'Android-инструменты: ' + msg, **meta)) if progress else None
+                f = download(d['android']['url'], self.data / 'cache/android.zip', d['android']['sha256'], progress=notify)
                 if digest(f, 'sha1') != d['android']['sha1']:
                     raise Problem('Не совпала опубликованная Google контрольная сумма SDK.')
                 extract_zip(f, self.home / 'android')
             if not self.aapt.is_file() or not self.jar.is_file():
                 raise Problem('Android Build Tools 34 не найдены после распаковки.')
 
-    def inspect(self, apk, api=None):
-        self.ensure()
+    def inspect(self, apk, api=None, progress=None):
+        self.ensure(progress)
         info = parse_badging(run([self.aapt, 'dump', 'badging', apk]))
+        if info['split'] and api is None:
+            raise Problem('Отдельный split-APK нельзя установить как полное приложение.', code='APK_SPLIT')
         # Verify every APK with Android's cryptographic verifier, including installed ones.
         out = run([self.java, '-jar', self.jar, 'verify', '--min-sdk-version',
                    str(api or info['min_api']), '--print-certs', apk], timeout=90)
@@ -224,11 +277,12 @@ class Device:
         return self.adb('shell', *args, **kw)
 
     def connect(self):
-        output = run([self.tools.adb, 'connect', self.address])
+        output = run([self.tools.adb, 'connect', self.address], check=False)
         if 'unauthorized' in output:
             raise Problem('Подтвердите USB-отладку на экране телевизора.')
-        if self.adb('get-state') != 'device':
-            raise Problem('Устройство недоступно. Разрешите USB-отладку и проверьте IP/порт.')
+        state = self.adb('get-state', check=False)
+        if state != 'device':
+            raise command_problem(output + '\n' + state, 'подключение к ADB')
 
     def prop(self, key):
         return self.shell('getprop', key).strip()
@@ -284,7 +338,7 @@ class Device:
         candidates = [p for p in packages if any(w in p.lower() for w in ['telemetry', 'analytics', 'advert', 'demo'])]
         return {'unverified_candidates': candidates, 'note': 'Совпадение имени — не доказательство ненужности. Ничего не отключено. Каждый пакет требует анализа служб, разрешений, зависимостей и отдельного согласия.'}
 
-    def installed(self, pkg, folder, api):
+    def installed(self, pkg, folder, api, progress=None):
         if pkg not in self.packages():
             return None
         s = self.shell('pm', 'path', pkg)
@@ -295,17 +349,24 @@ class Device:
         folder.mkdir(parents=True, exist_ok=True)
         result = []
         for i, path in enumerate(paths):
+            if progress:
+                progress('backup', f'Сохранение и проверка установленного APK: часть {i + 1}/{len(paths)}', part=i + 1, parts=len(paths))
             if not re.fullmatch(r'/[A-Za-z0-9_./+=,@~-]+\.apk', path):
                 raise Problem('Неожиданный путь APK; обновление пропущено.')
             local = folder / f'{i}-{Path(path).name}'
             self.adb('pull', path, str(local), timeout=150)
-            info = self.tools.inspect(local, api)
+            info = self.tools.inspect(local, api, progress=progress)
             if info['package'] != pkg:
                 raise Problem('Сохранённый APK относится к другому пакету.')
             result.append(info)
-        base = next((x for x, p in zip(result, paths) if p.endswith('/base.apk')), result[0])
+        bases = [info for info in result if not info.get('split')]
+        if len(bases) != 1:
+            raise Problem('Не удалось однозначно найти базовый APK установленного приложения. Обновление пропущено.', code='APK_BASE_MISSING')
+        base = bases[0]
         if any(x['certificates'] != base['certificates'] for x in result):
             raise Problem('Сертификаты установленного split APK различаются; обновление пропущено.')
+        if any(x['version'] != base['version'] for x in result):
+            raise Problem('Версии базового APK и его частей различаются; обновление пропущено.', code='APK_SPLIT_VERSION')
         save_json(folder / 'metadata.json', {'package': pkg, 'parts': result, 'paths': paths})
         return base
 
@@ -320,13 +381,16 @@ def choose_variant(app, abis):
 
 
 def compatible(info, report):
+    if info.get('split') or info['min_api'] is None:
+        raise Problem('Для установки нужен полный APK, а не отдельный split.', code='APK_SPLIT')
     if info['min_api'] > report['api']:
         raise Problem('APK требует более новую версию Android; установка пропущена.')
     if info['abis'] and not set(info['abis']).intersection(report['abis']):
         raise Problem('Архитектура APK не подходит этому устройству.')
 
 
-def install_app(device, report, key, app, tools, folder, event):
+def install_app(device, report, key, app, tools, folder, event, progress=None):
+    emit = progress or (lambda *args, **kwargs: None)
     variant = choose_variant(app, report['abis'])
     path = Path(tools.data) / 'cache' / (variant['sha256'] + '.apk')
     # Prefer the exact first-stage artifact shipped in the Windows bundle.
@@ -335,28 +399,39 @@ def install_app(device, report, key, app, tools, folder, event):
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
             shutil.copyfile(local, path)
+    emit('source', 'Проверка официального источника и выбранной архитектуры')
     check_release(key, app, variant)
     event('Скачивание и проверка ' + app['label'])
-    path = download(variant['url'], path, variant['sha256'])
-    info = tools.inspect(path, report['api'])
+    path = download(variant['url'], path, variant['sha256'], progress=emit)
+    emit('tools', 'Подготовка инструментов проверки APK')
+    tools.ensure(progress=emit)
+    emit('inspect', 'Проверка SHA-256, подписи, версии Android и архитектуры APK')
+    info = tools.inspect(path, report['api'], progress=emit)
     if info['package'] != app['package'] or info['certificates'] != [app['certificate']]:
         raise Problem('Пакет или сертификат не совпадает с проверенным каталогом; установка запрещена.')
     compatible(info, report)
     if device.prop('ro.serialno') != report['properties']['ro.serialno']:
         raise Problem('По этому IP отвечает другое устройство. Повторите диагностику.')
-    old = device.installed(info['package'], Path(folder) / 'backups' / key, report['api'])
+    emit('backup', 'Проверка установленной версии и сохранение APK перед обновлением')
+    old = device.installed(info['package'], Path(folder) / 'backups' / key, report['api'], progress=emit)
     if old:
         if old['certificates'] != info['certificates']:
             return {'status': 'skipped', 'message': 'Конфликт сертификатов: существующая версия сохранена. Переход — вручную после резервного копирования; не удаляйте работающий Home.'}
         if old['version'] >= info['version']:
-            return {'status': 'done', 'message': 'Такая же или более новая версия уже установлена; повторная установка не нужна.'}
-    if device.free_space() < path.stat().st_size * 4 + 128 * 1024 * 1024:
-        raise Problem('Недостаточно места для безопасной установки. Автоматическая очистка запрещена.')
+            return {'status': 'done', 'already_installed': True, 'package': info['package'],
+                    'version': old['version'], 'certificate': app['certificate'],
+                    'message': 'Такая же или более новая версия уже установлена; повторная установка не нужна.'}
+    available = device.free_space()
+    required = path.stat().st_size * 4 + 128 * 1024 * 1024
+    if available < required:
+        raise Problem(f'Недостаточно места: доступно {available // 1048576} МБ, для этого APK требуется запас {required // 1048576} МБ. Освободите место вручную.', code='STORAGE')
     event('Установка ' + app['label'])
+    emit('install', 'Передача APK на ТВ и установка. При запросе подтвердите действие на экране ТВ.')
     output = device.adb('install', '-r', str(path), timeout=240)
     if not re.search(r'^Success\s*$', output, re.M):
-        raise Problem('ADB не подтвердил установку. Проверьте системный запрос на ТВ.')
+        raise command_problem(output, 'установка APK')
     # Query and verify the actual installed APK, not only ADB's success string.
+    emit('verify', 'Установка завершена; проверка реально установленной версии и подписи')
     actual = device.installed(info['package'], Path(folder) / 'verified' / key, report['api'])
     if not actual or actual['version'] != info['version'] or actual['certificates'] != info['certificates']:
         raise Problem('После установки пакет/версия/подпись не подтвердились. Не удаляйте приложение; повторите диагностику.')

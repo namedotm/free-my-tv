@@ -88,6 +88,19 @@
         }
       },
       "certificate": "c8768d2cea0c4b622e419b4b4715981946821e4ebc035fb41776cad395a7f68e"
+    },
+    "vimu": {
+      "label": "Vimu Installer",
+      "package": "net.gtvbox.installer",
+      "certificate": "532f2ed32068eff138bdc2d3c0bfcad4bcfe5125df0f4fb7d26d9da4b62e7ff9",
+      "source": "https://vimu.tv/installation-guide",
+      "variants": {
+        "universal": {
+          "url": "https://get.vimu.tv/installer/VimuInstaller.apk",
+          "sha256": "c3583e450ca0de36d90c764a9bebd97e0884be6cb9663e3a3f47c9d56936198a"
+        }
+      },
+      "note": "Официальный Installer; сам плеер и лицензия настраиваются на ТВ. SHA-256 закреплена по файлу с сайта разработчика, отдельная опубликованная сумма не обнаружена."
     }
   }
 }

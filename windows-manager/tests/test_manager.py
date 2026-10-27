@@ -31,7 +31,8 @@ class FakeTools:
         self.data = Path(data)
         self.info = copy.deepcopy(BASE)
         self.adb = 'adb'
-    def inspect(self, *args):
+    def ensure(self, **kwargs): pass
+    def inspect(self, *args, **kwargs):
         return copy.deepcopy(self.info)
 
 class FakeDevice:
@@ -42,7 +43,7 @@ class FakeDevice:
         self.installed_calls = 0
         self.install_result = 'Success'
     def prop(self, key): return 'serial'
-    def installed(self, *args):
+    def installed(self, *args, **kwargs):
         self.installed_calls += 1
         if self.installed_calls > 1 and self.install_result == 'Success': return copy.deepcopy(BASE)
         return self.old
@@ -218,14 +219,153 @@ class HTTPTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):self.request('/action',body=data)
         self.assertFalse(self.manager.busy)
 
+
+class RegressionTests(unittest.TestCase):
+    def test_vlc_config_split_without_uses_sdk(self):
+        text="package: versionCode='13070105' name='org.videolan.vlc' split='config.ru'\napplication: label='' icon=''\n"
+        info=e.parse_badging(text)
+        self.assertTrue(info['split'])
+        self.assertIsNone(info['min_api'])
+        with self.assertRaises(e.Problem):e.compatible(info,{'api':34,'abis':['armeabi-v7a']})
+
+    def test_missing_sdk_in_base_is_not_silently_accepted(self):
+        with self.assertRaises(e.Problem) as cm:e.parse_badging("package: name='org.videolan.vlc' versionCode='13070105'")
+        self.assertEqual(cm.exception.code,'APK_MIN_SDK')
+
+    def test_preview_sdk_is_not_guessed(self):
+        with self.assertRaises(e.Problem):e.parse_badging("package: name='org.videolan.vlc' versionCode='1'\nsdkVersion:'Preview'")
+
+    def test_installed_play_splits_are_backed_up_and_verified(self):
+        class T:
+            def inspect(self,path,api,**kw):
+                self.api=api
+                split='1-' in str(path)
+                return {**copy.deepcopy(BASE),'package':'org.videolan.vlc','split':split,'min_api':None if split else 17}
+        with tempfile.TemporaryDirectory() as td:
+            t=T();d=e.Device('192.168.1.2',t)
+            d.packages=lambda:['org.videolan.vlc']
+            d.shell=lambda *a:'package:/data/app/vlc/base.apk\npackage:/data/app/vlc/split_config.ru.apk'
+            d.adb=lambda *a,**k: None
+            info=d.installed('org.videolan.vlc',td,34)
+            self.assertFalse(info['split']);self.assertEqual(info['min_api'],17)
+            self.assertEqual(t.api,34)
+            self.assertEqual(len(e.read_json(Path(td)/'metadata.json')['parts']),2)
+
+    def test_known_android14_error_has_actionable_reason(self):
+        result=subprocess.CompletedProcess(['adb'],1,'','Failure [INSTALL_FAILED_USER_RESTRICTED: Install canceled by user]')
+        with patch('engine.subprocess.run',return_value=result), self.assertRaises(e.Problem) as cm:e.run(['adb','install','-r','app.apk'])
+        self.assertEqual(cm.exception.code,'INSTALL_FAILED_USER_RESTRICTED')
+        self.assertIn('экране ТВ',str(cm.exception));self.assertIn('Install canceled',cm.exception.details)
+
+    def test_unknown_error_keeps_sanitized_diagnostics(self):
+        error=e.command_problem('Failure [INSTALL_FAILED_TEST] https://server/path?token=topsecret github_pat_abcdefghijk','adb',1)
+        self.assertEqual(error.code,'INSTALL_FAILED_TEST')
+        self.assertNotIn('topsecret',error.details);self.assertNotIn('github_pat_',error.details)
+
+    def test_download_reports_real_bytes_and_cached_file(self):
+        content=b'x'*2500000
+        class Response:
+            headers={'Content-Length':str(len(content))}
+            def __enter__(self):self.source=__import__('io').BytesIO(content);return self
+            def __exit__(self,*args):pass
+            def read(self,n):return self.source.read(n)
+        events=[]
+        with tempfile.TemporaryDirectory() as td,patch('engine.urllib.request.build_opener') as opener:
+            opener.return_value.open.return_value=Response()
+            dest=Path(td)/'app.apk';sha=hashlib.sha256(content).hexdigest()
+            cb=lambda stage,msg,**meta:events.append((stage,meta))
+            e.download('https://github.com/test.apk',dest,sha,progress=cb)
+            self.assertEqual(events[-1][1]['received'],len(content))
+            self.assertEqual(events[-1][1]['total'],len(content))
+            e.download('https://github.com/test.apk',dest,sha,progress=cb)
+            self.assertTrue(events[-1][1]['cached']);self.assertEqual(opener.return_value.open.call_count,1)
+
+    def test_vimu_installer_is_not_reported_as_finished_player(self):
+        class D:
+            def __init__(self,*a):pass
+            def diagnose(self):return {'model':'Box','android':'14','api':34,'abis':['armeabi-v7a'],'identity':'id','free_bytes':500000000}
+            def packages(self):return ['net.gtvbox.installer']
+            def measures(self):return {}
+        result={'status':'done','package':'net.gtvbox.installer','already_installed':True,'message':'Already installed'}
+        with tempfile.TemporaryDirectory() as td,patch('app.Device',D),patch('app.install_app',return_value=result):
+            m=gui.Manager(td,FakeTools(td));a='192.168.1.2:5555'
+            m.device_work(a,['vimu'],'install',False)
+            row=m.snapshot()['rows'][a]
+            self.assertEqual(row['status'],'warning')
+            self.assertEqual(row['apps']['vimu']['status'],'manual')
+            self.assertIn('Сам плеер пока не считается установленным',row['apps']['vimu']['message'])
+
+    def test_existing_vimu_player_does_not_get_replaced_by_installer(self):
+        class D:
+            def __init__(self,*a):pass
+            def diagnose(self):return {'model':'Box','android':'11','api':30,'abis':['armeabi-v7a'],'identity':'id','free_bytes':500000000}
+            def packages(self):return ['net.gtvbox.videoplayer']
+            def measures(self):return {}
+        with tempfile.TemporaryDirectory() as td,patch('app.Device',D),patch('app.install_app') as install:
+            m=gui.Manager(td,FakeTools(td));a='192.168.1.2:5555'
+            m.device_work(a,['vimu'],'install',False)
+            install.assert_not_called()
+            self.assertEqual(m.snapshot()['rows'][a]['apps']['vimu']['status'],'done')
+
+    def test_progress_metadata_changes_do_not_retain_old_percent(self):
+        with tempfile.TemporaryDirectory() as td:
+            m=gui.Manager(td,FakeTools(td));a='192.168.1.2:5555'
+            m.progress(a,'vlc','download','Получение',received=100,total=200)
+            m.progress(a,'vlc','install','Установка')
+            task=m.snapshot()['rows'][a]['apps']['vlc']
+            self.assertEqual(task['stage'],'install');self.assertNotIn('received',task['stage_info'])
+            self.assertEqual(task['completed_stages'],['download'])
+            self.assertGreater(task['stage_started'],0)
+
+    def test_error_is_not_reported_as_all_successful(self):
+        class D:
+            def __init__(self,*a):pass
+            def diagnose(self):return {'model':'Box','android':'14','api':34,'abis':['armeabi-v7a'],'identity':'id','free_bytes':500000000}
+            def measures(self):return {}
+        def fail(*a,**k):
+            k['progress']('install','Передача APK')
+            raise e.command_problem('Failure [INSTALL_FAILED_USER_RESTRICTED]','adb')
+        with tempfile.TemporaryDirectory() as td,patch('app.Device',D),patch('app.install_app',side_effect=fail):
+            m=gui.Manager(td,FakeTools(td));a='192.168.1.2:5555'
+            m.device_work(a,['freemytv'],'install',False)
+            row=m.snapshot()['rows'][a]
+            self.assertEqual(row['status'],'error');self.assertIn('Завершено с ошибками',row['message'])
+            self.assertEqual(row['apps']['freemytv']['stage'],'install')
+            self.assertEqual(row['apps']['freemytv']['code'],'INSTALL_FAILED_USER_RESTRICTED')
+            self.assertEqual(row['processed'],1)
+
 @unittest.skipUnless(os.environ.get('TVM_REAL_TOOLS') == '1', 'Opt-in signature check; downloads Windows verification tools, no TV connection')
 class RealArtifactTests(unittest.TestCase):
     def test_actual_first_stage_apk(self):
         artifact=e.ROOT/'payload/FreeMyTV.apk'
         if not artifact.exists():artifact=e.ROOT.parent/'artifacts/FreeMyTV.apk'
         self.assertEqual(e.digest(artifact),e.APK_HASH)
-        t=e.Tools();info=t.inspect(artifact,28)
-        self.assertEqual(info['package'],'io.freemytv');self.assertEqual(info['version'],3)
-        self.assertEqual(info['certificates'],['8da630acb15da56191213ac858449ef5ee5908332d52b8774d52ad11ea3ec99c'])
+        t=e.Tools()
+        for api in (28,30,34):
+            info=t.inspect(artifact,api)
+            self.assertEqual(info['package'],'io.freemytv');self.assertEqual(info['version'],3)
+            self.assertEqual(info['certificates'],['8da630acb15da56191213ac858449ef5ee5908332d52b8774d52ad11ea3ec99c'])
+
+    def test_actual_official_vimu_installer(self):
+        app=e.read_json(e.ROOT/'catalog.json')['apps']['vimu']
+        variant=e.choose_variant(app,['armeabi-v7a'])
+        with tempfile.TemporaryDirectory() as td:
+            apk=e.download(variant['url'],Path(td)/'VimuInstaller.apk',variant['sha256'])
+            info=e.Tools().inspect(apk,34)
+            self.assertEqual(info['package'],'net.gtvbox.installer')
+            self.assertEqual(info['certificates'],[app['certificate']])
+            self.assertEqual(info['version'],112)
+            e.compatible(info,{'api':30,'abis':['armeabi-v7a']})
+
+    def test_actual_vlc_armv7_for_screenshot_devices(self):
+        app=e.read_json(e.ROOT/'catalog.json')['apps']['vlc']
+        variant=e.choose_variant(app,['armeabi-v7a','armeabi'])
+        with tempfile.TemporaryDirectory() as td:
+            apk=e.download(variant['url'],Path(td)/'vlc.apk',variant['sha256'])
+            for api in (30,34):
+                info=e.Tools().inspect(apk,api)
+                self.assertEqual(info['package'],'org.videolan.vlc')
+                self.assertEqual(info['certificates'],[app['certificate']])
+                e.compatible(info,{'api':api,'abis':['armeabi-v7a','armeabi']})
 
 if __name__=='__main__':unittest.main()

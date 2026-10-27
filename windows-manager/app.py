@@ -31,31 +31,67 @@ class Manager:
         self.rows = {}
         self.message = 'Готово к проверке. Никаких действий на телевизорах при запуске.'
         self.last = read_json(self.data / 'last-run.json', {})
+        self.events = []
+        self.event_id = 0
 
     def snapshot(self):
         with self.lock:
             return copy.deepcopy({'busy': self.busy, 'rows': self.rows, 'message': self.message,
-                                  'config': self.config, 'catalog_date': self.catalog['reviewed']})
+                                  'config': self.config, 'catalog_date': self.catalog['reviewed'],
+                                  'events': self.events})
 
     def update(self, address, **values):
         with self.lock:
             self.rows.setdefault(address, {}).update(values)
 
-    def event(self, address, message):
+    def event(self, address, message, **fields):
         self.update(address, message=message)
+        record = {'time': time.strftime('%Y-%m-%d %H:%M:%S'), 'message': message, 'address': address, **fields}
+        with self.lock:
+            self.event_id += 1
+            self.events.append({'id': self.event_id, **record})
+            self.events = self.events[-300:]
         log = self.data / 'logs' / (address.replace(':', '_') + '.jsonl')
         log.parent.mkdir(exist_ok=True)
         with log.open('a', encoding='utf-8') as f:
-            f.write(json.dumps({'time': time.strftime('%Y-%m-%d %H:%M:%S'), 'message': message}, ensure_ascii=False) + '\n')
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+
+    def progress(self, address, key, stage, message, **metadata):
+        now = time.time()
+        with self.lock:
+            row = self.rows.setdefault(address, {})
+            task = row.setdefault('apps', {}).setdefault(key, {})
+            changed = task.get('stage') != stage
+            visited = task.setdefault('completed_stages', [])
+            old = task.get('stage')
+            if changed and old and old not in visited:
+                visited.append(old)
+            task.update(status='running', stage=stage, message=message, stage_info=metadata)
+            if changed:
+                task['stage_started'] = now
+            row['current_app'] = key
+        if changed:
+            self.event(address, self.catalog['apps'].get(key, {'label': key})['label'] + ': ' + message)
+
+    def result(self, address, key, value):
+        with self.lock:
+            current = self.rows.get(address, {}).get('apps', {}).get(key, {})
+            result = {**copy.deepcopy(current), **value}
+            if result['status'] != 'error':
+                result['stage'] = 'done'
+            self.rows.setdefault(address, {}).setdefault('apps', {})[key] = result
+        return result
 
     def start(self, payload):
         addresses = targets(payload.get('ips', []))
         selected = payload.get('apps', [])
-        if not isinstance(selected, list) or any(k not in self.catalog['apps'] and k not in ('vimu', 'mx') for k in selected):
+        if not isinstance(selected, list) or any(k not in self.catalog['apps'] and k != 'mx' for k in selected):
             raise Problem('Неизвестное приложение.')
         action = payload.get('action')
         if action not in ('check', 'install', 'retry', 'measure', 'profile'):
             raise Problem('Неизвестное действие.')
+        if action == 'install' and not selected:
+            raise Problem('Выберите хотя бы одно приложение для установки.')
         if action == 'retry':
             failed = {a for a, r in self.last.items() if r.get('status') == 'error' or any(x.get('status') == 'error' for x in r.get('apps', {}).values())}
             addresses = [a for a in addresses if a in failed]
@@ -64,11 +100,14 @@ class Manager:
         with self.lock:
             if self.busy:
                 raise Problem('Дождитесь окончания текущей операции.')
-            self.busy = True
             self.config = {'ips': payload.get('ips'), 'apps': selected,
                            'folder': payload.get('folder', ''), 'official_youtube': bool(payload.get('official_youtube'))}
             save_json(self.data / 'config.json', self.config)
-            self.rows = {a: {'status': 'queued', 'message': 'Ожидание', 'progress': 0, 'apps': {}} for a in addresses}
+            self.busy = True
+            self.rows = {a: {'status': 'queued', 'message': 'Ожидание подключения', 'progress': 0,
+                            'processed': 0, 'total_apps': len(selected) if action in ('install', 'retry') else 0,
+                            'apps': {key: {'status': 'queued', 'message': 'В очереди'} for key in selected}
+                            if action in ('install', 'retry') else {}} for a in addresses}
             self.message = 'Операция выполняется. Подтвердите USB-отладку на экране ТВ, если появится запрос.'
         threading.Thread(target=self.work, args=(addresses, selected, action, bool(payload.get('official_youtube'))), daemon=True).start()
 
@@ -80,7 +119,9 @@ class Manager:
                 if action in ('install', 'retry'):
                     self.last.update(copy.deepcopy(self.rows))
                     save_json(self.data / 'last-run.json', self.last)
-                self.message = 'Готово. Проверьте отдельные статусы и ручные шаги; установка не означает настройку VPN или смену Home.'
+                errors = sum(r.get('status') == 'error' for r in self.rows.values())
+                warnings = sum(r.get('status') == 'warning' for r in self.rows.values())
+                self.message = f'Обработка завершена. Устройств с ошибками: {errors}; с пропусками или ручными шагами: {warnings}. Подробности — в карточках ниже.'
         except Exception:
             with self.lock:
                 self.message = 'Ошибка сохранения результатов. Проверьте свободное место и права на папку data; устройства не удалялись и Home не менялся.'
@@ -94,12 +135,14 @@ class Manager:
         apps = {}
         try:
             d = Device(address, self.tools)
+            self.update(address, status='running')
             self.event(address, 'Подключение и сбор диагностики без изменения настроек')
             report = d.diagnose()
             save_json(folder / 'before.json', report)
             self.update(address, model=report['model'], android=report['android'], api=report['api'],
-                        abis=report['abis'], identity=report['identity'], free_mb=report['free_bytes'] // 1048576, status='running', progress=15,
-                        report=str(folder.relative_to(self.data)))
+                        abis=report['abis'], identity=report['identity'], free_mb=report['free_bytes'] // 1048576, status='running', progress=0,
+                        report=str(folder.relative_to(self.data)), processed=0,
+                        total_apps=len(selected) if action in ('install', 'retry') else 0)
             self.event(address, 'ADB подключён; диагностический отчёт сохранён')
             if action == 'measure':
                 if 'org.videolan.vlc' not in report['packages']:
@@ -121,29 +164,37 @@ class Manager:
                 for index, key in enumerate(selected):
                     # Retry only failed steps from the previous install run.
                     if action == 'retry' and previous.get(key, {}).get('status') not in (None, 'error'):
-                        apps[key] = previous[key]
+                        apps[key] = self.result(address, key, previous[key])
+                        self.update(address, processed=index + 1, progress=round(100 * (index + 1) / len(selected)))
                         continue
                     try:
-                        if key in ('mx', 'vimu'):
-                            pkg = 'net.gtvbox.videoplayer' if key == 'vimu' else 'com.mxtech.videoplayer.ad'
+                        self.progress(address, key, 'source', 'Начало проверки приложения')
+                        if key == 'vimu' and 'net.gtvbox.videoplayer' in d.packages():
+                            apps[key] = {'status': 'done', 'already_installed': True, 'message': 'Vimu Player уже обнаружен на ТВ. Installer не требуется; настройки и лицензия не менялись.'}
+                        elif key == 'mx':
+                            pkg = 'com.mxtech.videoplayer.ad'
                             if pkg in d.packages():
                                 apps[key] = {'status': 'done', 'message': 'Уже установлено; магазин не открывался.'}
                             else:
                                 opened = d.shell('am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'market://details?id=' + pkg)
                                 if re.search(r'Error:|Exception|unable to resolve|No Activity', opened, re.I):
                                     raise Problem('На ТВ нет доступного официального магазина; автоматическая установка этого приложения пропущена.')
-                                apps[key] = {'status': 'manual', 'message': 'Открыт официальный магазин на ТВ. Покупка/установка подтверждается вами; лицензия не обходится.'}
+                                apps[key] = {'status': 'manual', 'message': 'Открыта официальная страница MX Player на ТВ. Установка ещё не подтверждена: завершите её в магазине.'}
                         else:
                             apps[key] = install_app(d, report, key, self.catalog['apps'][key], self.tools, folder,
-                                                    lambda msg: self.event(address, msg))
+                                                    lambda msg: self.event(address, msg),
+                                                    progress=lambda stage, msg, **meta: self.progress(address, key, stage, msg, **meta))
+                        if key == 'vimu' and apps[key].get('package') == 'net.gtvbox.installer' and apps[key]['status'] == 'done':
+                            apps[key].update(status='manual', message='Официальный Vimu Installer установлен и проверен. Откройте его на ТВ, установите плеер и при необходимости активируйте лицензию. Сам плеер пока не считается установленным.')
+                        apps[key] = self.result(address, key, apps[key])
                         self.event(address, self.catalog['apps'].get(key, {'label': key})['label'] + ': ' + apps[key]['message'])
                     except Problem as e:
-                        apps[key] = {'status': 'error', 'message': str(e)}
-                        self.event(address, key + ': ' + str(e))
+                        apps[key] = self.result(address, key, {'status': 'error', 'message': str(e), 'code': e.code, 'details': e.details})
+                        self.event(address, key + ': ' + str(e), code=e.code, details=e.details)
                     except Exception:
-                        apps[key] = {'status': 'error', 'message': 'Непредвиденная ошибка шага. Сохранённые приложения не удалялись.'}
+                        apps[key] = self.result(address, key, {'status': 'error', 'message': 'Непредвиденная ошибка шага. Сохранённые приложения не удалялись.'})
                         self.event(address, key + ': непредвиденная ошибка шага')
-                    self.update(address, apps=copy.deepcopy(apps), progress=15 + round(70 * (index + 1) / max(1, len(selected))))
+                    self.update(address, processed=index + 1, progress=round(100 * (index + 1) / max(1, len(selected))))
                 if 'byedpi' in selected and apps.get('byedpi', {}).get('status') == 'done':
                     try:
                         self.make_profile(d, report, folder, official)
@@ -153,14 +204,17 @@ class Manager:
             after = d.measures()
             save_json(folder / 'after.json', after)
             # Observed deltas are not a benchmark: devices/apps may be doing different work.
-            state = 'error' if any(x.get('status') == 'error' for x in apps.values()) else 'done'
+            counts = {s: sum(x.get('status') == s for x in apps.values()) for s in ('done', 'error', 'skipped', 'manual')}
+            state = 'error' if counts['error'] else 'warning' if counts['skipped'] or counts['manual'] else 'done'
             self.update(address, status=state, progress=100, apps=copy.deepcopy(apps))
-            self.event(address, 'Готово; измерения до/после сохранены. Ничего не отключалось; ускорение не заявляется.')
+            summary = (f"Проверено/установлено: {counts['done']}; ошибки: {counts['error']}; "
+                       f"пропущено: {counts['skipped']}; требуется действие на ТВ: {counts['manual']}.") if apps else 'Проверка завершена; отчёт сохранён.'
+            self.event(address, ('Завершено с ошибками. ' if state == 'error' else 'Завершено. ') + summary)
         except Problem as e:
-            self.update(address, status='error', progress=100)
-            self.event(address, str(e))
+            self.update(address, status='error', code=e.code, details=e.details)
+            self.event(address, str(e), code=e.code, details=e.details)
         except Exception:
-            self.update(address, status='error', progress=100)
+            self.update(address, status='error')
             self.event(address, 'Непредвиденная ошибка. Проверьте доступ к каталогу данных и повторите проверку.')
 
     def make_profile(self, d, report, folder, official):
