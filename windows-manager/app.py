@@ -14,6 +14,8 @@ import threading
 import time
 import urllib.parse
 import webbrowser
+import profiles
+import media
 
 from engine import (ROOT, DATA, Tools, Device, Problem, targets, read_json, save_json,
                     install_app, vpn_profile, run)
@@ -33,12 +35,23 @@ class Manager:
         self.last = read_json(self.data / 'last-run.json', {})
         self.events = []
         self.event_id = 0
+        self.source_profile = read_json(self.data / 'source-profile.json', None)
+        self.source_status = 'Профиль проектора ещё не прочитан.'
+        self.source_packages = []
+        if self.source_profile is not None:
+            try:
+                self.source_profile = profiles.validate(self.source_profile)
+                self.source_status = 'Загружен сохранённый UI-профиль; свежая копия проектора в этом сеансе ещё не получена.'
+            except Problem:
+                self.source_profile = None
+                self.source_status = 'Сохранённый UI-профиль повреждён или содержит запрещённые поля. Заполните его заново.'
 
     def snapshot(self):
         with self.lock:
             return copy.deepcopy({'busy': self.busy, 'rows': self.rows, 'message': self.message,
                                   'config': self.config, 'catalog_date': self.catalog['reviewed'],
-                                  'events': self.events})
+                                  'events': self.events, 'source_profile': self.source_profile,
+                                  'source_status': self.source_status, 'source_packages': self.source_packages})
 
     def update(self, address, **values):
         with self.lock:
@@ -83,13 +96,23 @@ class Manager:
         return result
 
     def start(self, payload):
-        addresses = targets(payload.get('ips', []))
+        action = payload.get('action')
+        addresses = targets([payload.get('source_ip') or '192.168.28.60']) if action == 'read_source' else targets(payload.get('ips', []))
         selected = payload.get('apps', [])
-        if not isinstance(selected, list) or any(k not in self.catalog['apps'] and k != 'mx' for k in selected):
+        if not isinstance(selected, list) or any(k not in self.catalog['apps'] and k not in ('mx', 'youtube') for k in selected):
             raise Problem('Неизвестное приложение.')
         action = payload.get('action')
-        if action not in ('check', 'install', 'retry', 'measure', 'profile'):
+        if action not in ('check', 'install', 'retry', 'measure', 'profile', 'read_source', 'sync_ui', 'restore_ui', 'open_incy'):
             raise Problem('Неизвестное действие.')
+        source_address = targets([payload.get('source_ip') or '192.168.28.60'])[0]
+        if action == 'read_source':
+            addresses = [source_address]
+        if action in ('sync_ui', 'restore_ui', 'open_incy'):
+            addresses = [a for a in addresses if a.split(':')[0] != source_address.split(':')[0]]
+            if not addresses:
+                raise Problem('Для переноса выберите хотя бы одну приставку. Проектор-источник исключён из изменений.')
+        options = {'source_ip': source_address, 'sync_ui': bool(payload.get('sync_ui')),
+                   'protect_source': True}
         if action == 'install' and not selected:
             raise Problem('Выберите хотя бы одно приложение для установки.')
         if action == 'retry':
@@ -101,7 +124,8 @@ class Manager:
             if self.busy:
                 raise Problem('Дождитесь окончания текущей операции.')
             self.config = {'ips': payload.get('ips'), 'apps': selected,
-                           'folder': payload.get('folder', ''), 'official_youtube': bool(payload.get('official_youtube'))}
+                           'folder': payload.get('folder', ''), 'official_youtube': bool(payload.get('official_youtube')),
+                           **options}
             save_json(self.data / 'config.json', self.config)
             self.busy = True
             self.rows = {a: {'status': 'queued', 'message': 'Ожидание подключения', 'progress': 0,
@@ -109,12 +133,13 @@ class Manager:
                             'apps': {key: {'status': 'queued', 'message': 'В очереди'} for key in selected}
                             if action in ('install', 'retry') else {}} for a in addresses}
             self.message = 'Операция выполняется. Подтвердите USB-отладку на экране ТВ, если появится запрос.'
-        threading.Thread(target=self.work, args=(addresses, selected, action, bool(payload.get('official_youtube'))), daemon=True).start()
+        threading.Thread(target=self.work, args=(addresses, selected, action, bool(payload.get('official_youtube')), options), daemon=True).start()
 
-    def work(self, addresses, selected, action, official):
+    def work(self, addresses, selected, action, official, options=None):
+        options = options or {}
         try:
             with ThreadPoolExecutor(max_workers=3) as pool:
-                list(pool.map(lambda a: self.device_work(a, selected, action, official), addresses))
+                list(pool.map(lambda a: self.device_work(a, selected, action, official, options), addresses))
             with self.lock:
                 if action in ('install', 'retry'):
                     self.last.update(copy.deepcopy(self.rows))
@@ -129,7 +154,8 @@ class Manager:
             with self.lock:
                 self.busy = False
 
-    def device_work(self, address, selected, action, official):
+    def device_work(self, address, selected, action, official, options=None):
+        options = options or {}
         folder = self.data / 'reports' / address.replace(':', '_') / str(time.time_ns())
         folder.mkdir(parents=True)
         apps = {}
@@ -144,7 +170,47 @@ class Manager:
                         report=str(folder.relative_to(self.data)), processed=0,
                         total_apps=len(selected) if action in ('install', 'retry') else 0)
             self.event(address, 'ADB подключён; диагностический отчёт сохранён')
-            if action == 'measure':
+            if action == 'read_source':
+                activities = d.shell('cmd', 'package', 'query-activities', '--brief', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LEANBACK_LAUNCHER', check=False)
+                candidates = sorted(set(re.findall(r'^([A-Za-z][A-Za-z0-9_.]+)/[A-Za-z0-9_.$]+$', activities, re.M)))
+                with self.lock:
+                    self.source_packages = [p for p in candidates if p in report['packages']]
+                try:
+                    profile = profiles.export(d)
+                    save_json(self.data / 'source-profile.json', profile)
+                    with self.lock:
+                        self.source_profile = profile
+                        self.source_status = 'Прочитан UI-профиль проектора; ключи, VPN и системные параметры исключены.'
+                    self.event(address, self.source_status)
+                except Problem as exc:
+                    with self.lock:
+                        self.source_status = str(exc)
+                        self.source_profile = None
+                        old = self.data / 'source-profile.json'
+                        if old.exists():
+                            old.replace(self.data / ('source-profile.previous-' + str(time.time_ns()) + '.json'))
+                    raise
+            elif action == 'sync_ui':
+                _, missing = self.transfer_ui(d, folder)
+                apps['ui_profile'] = {'status': 'manual' if missing else 'done', 'missing_packages': missing,
+                                      'message': 'UI-профиль перенесён и проверен. Home не менялся.' + (' Не установлены приложения из избранного: ' + ', '.join(missing) if missing else '')}
+                self.update(address, total_apps=1, processed=1)
+            elif action == 'restore_ui':
+                actual = profiles.restore(d)
+                save_json(folder / 'ui-restored.json', actual)
+                apps['ui_profile'] = {'status': 'done', 'message': 'Исходный UI-профиль восстановлен. Системные параметры не менялись.'}
+                self.update(address, total_apps=1, processed=1)
+                self.event(address, 'Исходные настройки интерфейса восстановлены. Home, разрешения и VPN не менялись.')
+            elif action == 'open_incy':
+                if 'llc.itdev.incy' not in d.packages():
+                    raise Problem('Сначала установите INCY на это устройство.')
+                output = d.shell('am', 'start', '-n', 'llc.itdev.incy/.MainActivity')
+                if re.search(r'Error:|Exception', output):
+                    raise Problem('Android не подтвердил открытие INCY.', details=output)
+                apps['incy_setup'] = {'status': 'manual', 'message': 'INCY открыт. Перенос подписки и проверку списка приложений нужно завершить в клиенте; VPN менеджером не включался.'}
+                self.update(address, total_apps=1, processed=1)
+                self.event(address, 'INCY открыт. Перенесите подписку через штатный Send to TV/QR и настройте белый список перед включением VPN.')
+            elif action == 'measure':
                 if 'org.videolan.vlc' not in report['packages']:
                     raise Problem('VLC не установлен; замер запуска пропущен.')
                 resolved = d.shell('cmd', 'package', 'resolve-activity', '--brief', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LEANBACK_LAUNCHER', '-p', 'org.videolan.vlc')
@@ -169,23 +235,35 @@ class Manager:
                         continue
                     try:
                         self.progress(address, key, 'source', 'Начало проверки приложения')
-                        if key == 'vimu' and 'net.gtvbox.videoplayer' in d.packages():
+                        if key == 'freemytv' and options.get('protect_source') and address.split(':')[0] == options.get('source_ip', '').split(':')[0]:
+                            apps[key] = {'status': 'skipped', 'message': 'Проектор-источник защищён: работающий лаунчер не обновлялся. Другие выбранные приложения обрабатываются независимо.'}
+                        elif key == 'vimu' and 'net.gtvbox.videoplayer' in d.packages():
                             apps[key] = {'status': 'done', 'already_installed': True, 'message': 'Vimu Player уже обнаружен на ТВ. Installer не требуется; настройки и лицензия не менялись.'}
-                        elif key == 'mx':
-                            pkg = 'com.mxtech.videoplayer.ad'
+                        elif key in ('mx', 'youtube'):
+                            pkg = 'com.mxtech.videoplayer.ad' if key == 'mx' else 'com.google.android.youtube.tv'
                             if pkg in d.packages():
-                                apps[key] = {'status': 'done', 'message': 'Уже установлено; магазин не открывался.'}
+                                apps[key] = {'status': 'done', 'already_installed': True, 'message': 'Пакет уже обнаружен; версия не заменялась и магазин не открывался.'}
                             else:
                                 opened = d.shell('am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'market://details?id=' + pkg)
                                 if re.search(r'Error:|Exception|unable to resolve|No Activity', opened, re.I):
                                     raise Problem('На ТВ нет доступного официального магазина; автоматическая установка этого приложения пропущена.')
-                                apps[key] = {'status': 'manual', 'message': 'Открыта официальная страница MX Player на ТВ. Установка ещё не подтверждена: завершите её в магазине.'}
+                                apps[key] = {'status': 'manual', 'message': 'Открыта официальная страница приложения на ТВ. Установка ещё не подтверждена: завершите её в Google Play.'}
                         else:
                             apps[key] = install_app(d, report, key, self.catalog['apps'][key], self.tools, folder,
                                                     lambda msg: self.event(address, msg),
                                                     progress=lambda stage, msg, **meta: self.progress(address, key, stage, msg, **meta))
                         if key == 'vimu' and apps[key].get('package') == 'net.gtvbox.installer' and apps[key]['status'] == 'done':
                             apps[key].update(status='manual', message='Официальный Vimu Installer установлен и проверен. Откройте его на ТВ, установите плеер и при необходимости активируйте лицензию. Сам плеер пока не считается установленным.')
+                        if key == 'incy' and apps[key]['status'] == 'done':
+                            allowed = [p for p in ('org.smarttube.stable', 'com.google.android.youtube.tv') if p in d.packages() and (official or p != 'com.google.android.youtube.tv')]
+                            headers = {'per-app-proxy-enable': '1', 'per-app-proxy-mode': 'proxy', 'per-app-proxy-list': ','.join(allowed)} if allowed else {}
+                            if headers:
+                                (folder / 'INCY-YOUTUBE-HEADERS.txt').write_text('\n'.join(k+': '+v for k,v in headers.items())+'\n', encoding='utf-8')
+                            save_json(folder / 'incy-checklist.json', {'kind': 'manual-checklist-not-import-config', 'allowed_apps': allowed, 'subscription_headers': headers,
+                                      'vpn_started_by_manager': False, 'routing_verified': False,
+                                      'transfer': 'Use INCY Send to TV/QR; no private credentials extracted.'})
+                            apps[key].update(status='manual', installation_verified=True,
+                                message='INCY установлен, подпись проверена. Перенесите сервер через штатный Send to TV/QR и включите режим только выбранных приложений: SmartTube/YouTube. VPN менеджером не включался; маршрутизация требует проверки на ТВ.')
                         apps[key] = self.result(address, key, apps[key])
                         self.event(address, self.catalog['apps'].get(key, {'label': key})['label'] + ': ' + apps[key]['message'])
                     except Problem as e:
@@ -201,6 +279,17 @@ class Manager:
                     except Problem as e:
                         self.event(address, 'Профиль VPN не создан: ' + str(e))
                 save_json(folder / 'install.json', apps)
+                if options.get('sync_ui') and address.split(':')[0] != options.get('source_ip', '').split(':')[0]:
+                    try:
+                        _, missing = self.transfer_ui(d, folder)
+                    except Problem as exc:
+                        apps['ui_profile'] = self.result(address, 'ui_profile', {'status': 'error', 'message': str(exc), 'code': exc.code, 'details': exc.details})
+                        self.event(address, str(exc))
+                    else:
+                        apps['ui_profile'] = self.result(address, 'ui_profile', {'status': 'manual' if missing else 'done', 'missing_packages': missing,
+                            'message': 'UI-профиль перенесён, избранное объединено и проверено. Home не менялся.' + (' Не установлены пакеты: ' + ', '.join(missing) if missing else '')})
+                    self.update(address, total_apps=len(selected) + 1, processed=len(selected) + 1)
+                    save_json(folder / 'install.json', apps)
             after = d.measures()
             save_json(folder / 'after.json', after)
             # Observed deltas are not a benchmark: devices/apps may be doing different work.
@@ -216,6 +305,36 @@ class Manager:
         except Exception:
             self.update(address, status='error')
             self.event(address, 'Непредвиденная ошибка. Проверьте доступ к каталогу данных и повторите проверку.')
+
+    def transfer_ui(self, device, folder):
+        with self.lock:
+            source = copy.deepcopy(self.source_profile)
+        if source is None:
+            raise Problem('Нет профиля источника. Сначала прочитайте профиль проектора или сохраните ручной профиль; заводские значения не выдаются за скопированные.', code='PROFILE_SOURCE_REQUIRED')
+        before = profiles.export(device)
+        save_json(folder / 'ui-before.json', before)
+        merged, missing = profiles.merge(source, before, device.packages())
+        save_json(folder / 'ui-planned.json', merged)
+        actual = profiles.apply(device, merged)
+        save_json(folder / 'ui-after.json', actual)
+        if missing:
+            self.event(device.address, 'В избранное не добавлены отсутствующие пакеты: ' + ', '.join(missing))
+        return actual, missing
+
+    def save_manual_profile(self, value):
+        profile = profiles.validate(value)
+        with self.lock:
+            if self.busy:
+                raise Problem('Дождитесь завершения текущего шага.')
+            save_json(self.data / 'source-profile.json', profile)
+            self.source_profile = profile
+            self.source_status = 'Сохранён ручной UI-профиль пользователя; это не автоматическая копия проектора.'
+        return self.source_status
+
+    def media_info(self, payload):
+        remote_ip = next((v for v in payload.get('ips', []) if v.strip()), None)
+        info = media.inspect(payload.get('folder') or r'W:\.intake', remote_ip)
+        return media.plan(info, read_json(self.data / 'smb-state.json', None))
 
     def make_profile(self, d, report, folder, official):
         installed = d.installed('io.github.romanvht.byedpi', folder / 'profile-target', report['api'])
@@ -245,9 +364,13 @@ class Manager:
             if self.busy:
                 raise Problem('Дождитесь завершения работы с устройствами.')
         path = payload.get('folder', '')
+        if not restore:
+            info = media.inspect(path)
+            if info['kind'] == 'network':
+                raise Problem('Это уже сетевой диск. Нажмите «Как подключить в плеерах»: используйте исходный NAS/SMB-сервер вместо повторной публикации W:.', code='SMB_ALREADY_NETWORK')
         if not restore and (not path or not Path(path).is_dir()):
             raise Problem('Сначала выберите существующую локальную папку Windows.')
-        ips = [x.split(':')[0] for x in targets(payload.get('ips', []))]
+        ips = [] if restore else [x.split(':')[0] for x in targets(payload.get('ips', []))]
         request = {'folder': path, 'ips': ips, 'data': str(self.data.resolve()), 'restore': restore}
         request_path = self.data / 'smb-request.json'
         save_json(request_path, request)  # No password. Password is entered only in the elevated native dialog.
@@ -306,7 +429,7 @@ def make_handler(manager, token):
                 return self.send(403, '{}')
             try:
                 size = int(self.headers.get('Content-Length', '0'))
-                if not 0 < size <= 16384:
+                if not 0 < size <= 65536:
                     return self.send(413, '{}')
                 payload = json.loads(self.rfile.read(size))
                 if not isinstance(payload, dict):
@@ -318,6 +441,10 @@ def make_handler(manager, token):
                     message = manager.pick_folder()
                 elif self.path in ('/smb', '/restore'):
                     message = manager.smb(payload, self.path == '/restore')
+                elif self.path == '/manual-profile':
+                    message = manager.save_manual_profile(payload.get('profile'))
+                elif self.path == '/media-info':
+                    return self.send(200, json.dumps({'media': manager.media_info(payload)}, ensure_ascii=False))
                 else:
                     return self.send(404, '{}')
                 self.send(200, json.dumps({'message': message}, ensure_ascii=False))

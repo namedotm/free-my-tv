@@ -65,7 +65,7 @@ try {
             exit
         }
     }
-    $item=Get-Item -LiteralPath $req.folder
+    $item=Get-Item -LiteralPath $req.folder -Force
     if(-not $item.PSIsContainer -or $item.FullName.StartsWith('\\') -or $item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)){throw 'Выберите обычную локальную папку, не сетевой путь и не ссылку.'}
     $path=$item.FullName.TrimEnd('\')
     $root=[IO.Path]::GetPathRoot($path)
@@ -93,7 +93,8 @@ try {
     if($smb.EnableSMB1Protocol){throw 'На компьютере уже включён SMB1. Менеджер его не использует. Отключите SMB1 в компонентах Windows и повторите.'}
     if(-not $smb.EnableSMB2Protocol){throw 'SMB2/SMB3 выключен на компьютере. Настройка пропущена; глобальные параметры сервера не изменялись.'}
     $id=[Guid]::NewGuid().ToString('N').Substring(0,8)
-    $s=[ordered]@{id=$id;account=('TVMRead_'+$id);share=('TVMovies_'+$id);rule=('XiaomiTVManager_'+$id);path=$path;sid=$null;restored=$false;sddl=(Get-Acl -LiteralPath $path).Sddl;ips=$ips}
+    $addresses=@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -match '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' } | Select-Object -ExpandProperty IPAddress)
+    $s=[ordered]@{server=$env:COMPUTERNAME;addresses=$addresses;id=$id;account=('TVMRead_'+$id);share=('TVMovies_'+$id);rule=('XiaomiTVManager_'+$id);path=$path;sid=$null;restored=$false;sddl=(Get-Acl -LiteralPath $path).Sddl;ips=$ips}
     $f=New-Object Windows.Forms.Form
     $f.Text='SMB: только чтение';$f.Width=620;$f.Height=370;$f.StartPosition='CenterScreen'
     $label=New-Object Windows.Forms.Label;$label.SetBounds(18,18,565,110)
@@ -117,6 +118,8 @@ try {
     try {
         $u=New-LocalUser -Name $s.account -Password $password -Description ('XiaomiTVManager:'+ $id) -UserMayNotChangePassword
         $s.sid=$u.SID.Value; Save-State $s
+        # Standard Users group by SID works on Russian Windows too; never Administrators.
+        Add-LocalGroupMember -SID ([Security.Principal.SecurityIdentifier]::new('S-1-5-32-545')) -Member $u
         $password.Dispose();$password=$null
         $acl=Get-Acl -LiteralPath $path
         $ace=[Security.AccessControl.FileSystemAccessRule]::new($u.SID,'ReadAndExecute','ContainerInherit,ObjectInherit','None','Allow')

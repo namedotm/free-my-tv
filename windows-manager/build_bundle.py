@@ -6,9 +6,9 @@ import tempfile
 import zipfile
 from engine import ROOT, download, digest, extract_zip, APK_HASH, Problem, read_json
 
-FILES = ['app.py','engine.py','index.html','style.css','ui.js','SMB.ps1','bootstrap.ps1',
+FILES = ['profiles.py','media.py','FolderInfo.ps1','W-INTAKE-RU.md','TRANSFER-RU.md','app.py','engine.py','index.html','style.css','ui.js','SMB.ps1','bootstrap.ps1',
          'START.bat','devices.json','dependencies.json','catalog.json','README-RU.md',
-         'RESEARCH-RU.md','tests/test_manager.py','tests/restore-safety.ps1','build_bundle.py']
+         'RESEARCH-RU.md','tests/test_manager.py','tests/test_profiles_media.py','tests/restore-safety.ps1','build_bundle.py']
 
 
 def build():
@@ -27,6 +27,10 @@ def build():
         for f in FILES:
             add(f,(ROOT/f).read_bytes())
         add('payload/FreeMyTV.apk',artifact.read_bytes())
+        profile_apk=ROOT.parent/'artifacts/FreeMyTV-profiles.apk'
+        expected=read_json(ROOT/'catalog.json')['apps']['freemytv']['variants']['universal']['sha256']
+        if digest(profile_apk)!=expected:raise Problem('Профильный APK не совпал с каталогом.')
+        add('payload/FreeMyTV-profiles.apk',profile_apk.read_bytes())
         add('LICENSE-FreeMyTV.txt',(ROOT.parent/'LICENSE').read_bytes())
         with zipfile.ZipFile(package) as py:
             for name in py.namelist():

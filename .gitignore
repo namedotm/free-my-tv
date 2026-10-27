@@ -26,3 +26,4 @@ tools/.i18n-cache.json
 /windows-manager/runtime/
 /windows-manager/vendor/
 !/artifacts/XiaomiTVManager-Windows.zip
+!/artifacts/FreeMyTV-profiles.apk

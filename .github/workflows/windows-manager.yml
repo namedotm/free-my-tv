@@ -1,12 +1,15 @@
 name: Xiaomi TV Manager checks
 on:
   push:
-    branches: [feature/xiaomi-tv-manager]
-    paths: ['windows-manager/**', '.github/workflows/windows-manager.yml']
+    branches: [feature/xiaomi-tv-manager, feature/incy-profiles-media]
+    paths: ['windows-manager/**', 'app/**', 'artifacts/FreeMyTV-profiles.apk', '.github/workflows/windows-manager.yml']
   pull_request:
-    paths: ['windows-manager/**', '.github/workflows/windows-manager.yml']
+    paths: ['windows-manager/**', 'app/**', 'artifacts/FreeMyTV-profiles.apk', '.github/workflows/windows-manager.yml']
 permissions:
   contents: read
+concurrency:
+  group: xiaomi-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-latest
@@ -25,7 +28,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          foreach($path in @('windows-manager/bootstrap.ps1','windows-manager/SMB.ps1')) {
+          foreach($path in @('windows-manager/bootstrap.ps1','windows-manager/SMB.ps1','windows-manager/FolderInfo.ps1')) {
             $tokens=$null;$errors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
             if($errors.Count){$errors | Format-List;throw "PowerShell parse failed: $path"}
@@ -50,3 +53,31 @@ jobs:
           name: XiaomiTVManager-Windows
           path: artifacts/XiaomiTVManager-Windows.zip
           retention-days: 30
+
+  android-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android test compiler tools
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"'
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: python3 windows-manager/tests/emulator_profiles.py

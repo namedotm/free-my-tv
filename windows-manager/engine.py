@@ -66,7 +66,7 @@ def command_problem(output, tool='инструмент', returncode=None):
 
 def read_json(path, default=None):
     try:
-        return json.loads(Path(path).read_text(encoding='utf-8'))
+        return json.loads(Path(path).read_text(encoding='utf-8-sig'))
     except FileNotFoundError:
         return default
 
@@ -394,8 +394,11 @@ def install_app(device, report, key, app, tools, folder, event, progress=None):
     variant = choose_variant(app, report['abis'])
     path = Path(tools.data) / 'cache' / (variant['sha256'] + '.apk')
     # Prefer the exact first-stage artifact shipped in the Windows bundle.
-    local = ROOT / 'payload/FreeMyTV.apk'
-    if key == 'freemytv' and local.exists() and digest(local) == APK_HASH:
+    bundled = app.get('bundled_file', 'FreeMyTV.apk')
+    if bundled not in ('FreeMyTV.apk', 'FreeMyTV-profiles.apk'):
+        raise Problem('Неизвестное имя локального APK.', code='APK_CATALOG')
+    local = ROOT / 'payload' / bundled
+    if key == 'freemytv' and local.exists() and digest(local) == variant['sha256']:
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
             shutil.copyfile(local, path)
@@ -451,7 +454,18 @@ def check_release(key, app, variant):
     """Fail closed if upstream removed/replaced the reviewed release or published a newer one."""
     try:
         opener = urllib.request.build_opener(HTTPSOnly())
-        if key in ('smarttube', 'byedpi'):
+        if key == 'incy':
+            with opener.open('https://raw.githubusercontent.com/INCY-DEV/incy-platforms/main/RELEASE.json', timeout=20) as r:
+                manifest = json.loads(r.read(512 * 1024))
+            if manifest.get('android', {}).get('version') != app['android_version'] or manifest['android'].get('download') != variant['url']:
+                raise Problem('Официальная Android-версия INCY изменилась. Требуется обновить проверенный каталог.', code='INCY_RELEASE_CHANGED')
+            req = urllib.request.Request('https://api.github.com/repos/INCY-DEV/incy-platforms/releases/tags/' + app['release'], headers={'User-Agent': 'XiaomiTVManager/1.1'})
+            with opener.open(req, timeout=20) as r:
+                release = json.loads(r.read(2 * 1024 * 1024))
+            asset = next((a for a in release.get('assets', []) if a.get('browser_download_url') == variant['url']), None)
+            if not asset or asset.get('digest') != 'sha256:' + variant['sha256'] or release.get('draft') or release.get('prerelease'):
+                raise Problem('Официальный digest INCY не подтвердился; установка остановлена.', code='INCY_SOURCE')
+        elif key in ('smarttube', 'byedpi'):
             repo = 'yuliskov/SmartTube' if key == 'smarttube' else 'romanvht/ByeByeDPI'
             req = urllib.request.Request('https://api.github.com/repos/' + repo + '/releases/latest', headers={'User-Agent': 'XiaomiTVManager/1.0'})
             with opener.open(req, timeout=20) as r:
