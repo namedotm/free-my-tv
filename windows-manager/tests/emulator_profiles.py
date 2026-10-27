@@ -62,17 +62,17 @@ def main():
     def current_home():
         # --brief also includes resolver metadata; compare the actual component.
         return d.shell('cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME').splitlines()[-1].strip()
-    home=current_home()
-    # Model a TV whose original launcher is already chosen. With no explicit default,
-    # installing any second HOME candidate changes Android's resolver itself.
-    original_home=home
-    assert '/' in original_home and 'ResolverActivity' not in original_home,home
-    # Installing a new HOME candidate can legitimately invalidate Android's chooser.
-    # Model an existing installation first, then verify its signed in-place update.
+    # A fresh emulator has no user-confirmed HOME preference. Android may show its
+    # resolver after a second launcher is first installed; that is OS chooser behavior.
+    # Establish the existing-v3 installation, then compare its actual resolved HOME
+    # across the in-place update and all profile operations without assigning a role.
+    initial_home=current_home()
+    assert '/' in initial_home,initial_home
     old_artifact=Path(__file__).resolve().parents[2]/'artifacts/FreeMyTV.apk'
     command(['adb','install','-r',old_artifact])
-    d.shell('cmd','package','set-home-activity','--user','0',original_home)
     home=current_home()
+    assert home==initial_home or home=='android/com.android.internal.app.ResolverActivity',('Unexpected first-install HOME',initial_home,home)
+    print('Android HOME after first install:',home)
     access=d.shell('settings','get','secure','enabled_accessibility_services')
     artifact=Path(__file__).resolve().parents[2]/'artifacts/FreeMyTV-profiles.apk'
     command(['adb','install','-r',artifact])
