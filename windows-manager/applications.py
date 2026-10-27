@@ -4,7 +4,7 @@ import re
 from engine import Problem, save_json, digest
 
 PKG=re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+')
-PROTECTED=re.compile(r'^(?:android|com\.android\.|com\.google\.|com\.xiaomi\.|com\.miui\.|com\.mediatek\.|com\.qualcomm\.|com\.droidlogic\.|com\.amlogic\.|com\.nvidia\.|io\.freemytv$)|cast|airplay|aircast|airscreen|miracast|bluetooth|network|wifi|ethernet|hdmi|drm|security|permission|keystone|autofocus|launcher|inputmethod|keyboard|vpn|incy|byedpi|videolan|gtvbox|mxtech|smarttube',re.I)
+PROTECTED=re.compile(r'^(?:android|com\.android\.|com\.google\.|com\.xiaomi\.|com\.miui\.|com\.mediatek\.|com\.qualcomm\.|com\.droidlogic\.|com\.amlogic\.|com\.nvidia\.|io\.freemytv$)|cast|airplay|aircast|airscreen|airreceiver|eshare|waxrain|ionitech|miracast|bluetooth|network|wifi|ethernet|hdmi|drm|security|permission|keystone|autofocus|launcher|inputmethod|keyboard|vpn|incy|byedpi|videolan|gtvbox|mxtech|smarttube',re.I)
 ACTIONS={'disable','enable','uninstall_keep_data','restore'}
 LABELS={'io.freemytv':'Free My TV','org.videolan.vlc':'VLC','net.gtvbox.videoplayer':'Vimu','com.mxtech.videoplayer.ad':'MX Player','llc.itdev.incy':'INCY','org.smarttube.stable':'SmartTube','com.google.android.youtube.tv':'YouTube'}
 
@@ -23,8 +23,11 @@ def inventory(device):
     if re.search(r'Error:|Exception|Unknown command|Permission denied',home,re.I):
         raise Problem('Не удалось определить все HOME-компоненты; изменение приложений запрещено.',code='APP_PROTECTION')
     dynamic=set(re.findall(r'\b([A-Za-z][A-Za-z0-9_.]+)/[\w.$]+',home))
-    for args in [('settings','get','secure','enabled_accessibility_services'),('settings','get','secure','default_input_method'),('dumpsys','device_policy')]:
-        dynamic.update(re.findall(r'\b([A-Za-z][A-Za-z0-9_.]+)/[\w.$]+',device.shell(*args,check=False)))
+    for args in [('settings','get','secure','enabled_accessibility_services'),('settings','get','secure','default_input_method'),('settings','get','secure','enabled_input_methods'),('dumpsys','device_policy')]:
+        value=device.shell(*args,check=False)
+        if re.search(r'Permission denied|Permission Denial|SecurityException',value,re.I):
+            raise Problem('Не удалось проверить критические роли; изменения запрещены.',code='APP_PROTECTION')
+        dynamic.update(re.findall(r'\b([A-Za-z][A-Za-z0-9_.]+)/[\w.$]+',value))
     dynamic.update(re.findall(r'cname=([A-Za-z][A-Za-z0-9_.]+)',device.shell('dumpsys','wifi',check=False)))
     rows=[]
     for p in sorted(known|installed):
@@ -55,7 +58,7 @@ def enabled_state(device,pkg):
     if not m or int(m[1]) not in (0,1,2,3,4):raise Problem('Не определено исходное enabled-state.',code='APP_STATE')
     uid=re.search(r'\buserId=(\d+)',text)
     flags=re.search(r'\b(?:pkgFlags|flags)=\[([^\]\n]*)\]',text)
-    if not uid or int(uid[1])<10000 or not flags or re.search(r'BIND_(?:VPN|ACCESSIBILITY|INPUT_METHOD)_SERVICE|android.net.VpnService',text):
+    if not uid or int(uid[1])<10000 or not flags or re.search(r'BIND_(?:VPN_SERVICE|ACCESSIBILITY_SERVICE|INPUT_METHOD|DEVICE_ADMIN)|android.net.VpnService|MediaRouteProviderService|MediaRoute2ProviderService',text):
         raise Problem('Критический или неизвестный тип приложения: изменение запрещено.',code='APP_PROTECTED')
     # Check flags and the per-user installation again independently of list classification.
     if not re.search(r'User 0:.*?\binstalled=true',text) or re.search(r'\b(?:pkgFlags|flags)=\[[^\]\n]*\bSYSTEM\b',text):
