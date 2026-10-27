@@ -67,13 +67,17 @@ def main():
     # installing any second HOME candidate changes Android's resolver itself.
     original_home=home
     assert '/' in original_home and 'ResolverActivity' not in original_home,home
+    # Installing a new HOME candidate can legitimately invalidate Android's chooser.
+    # Model an existing installation first, then verify its signed in-place update.
+    old_artifact=Path(__file__).resolve().parents[2]/'artifacts/FreeMyTV.apk'
+    command(['adb','install','-r',old_artifact])
     d.shell('cmd','package','set-home-activity','--user','0',original_home)
     home=current_home()
     access=d.shell('settings','get','secure','enabled_accessibility_services')
     artifact=Path(__file__).resolve().parents[2]/'artifacts/FreeMyTV-profiles.apk'
     command(['adb','install','-r',artifact])
     installed_home=current_home()
-    assert home==installed_home,('APK install changed the chosen Home',home,installed_home)
+    assert home==installed_home,('In-place APK update changed the chosen Home',home,installed_home)
     before=profiles.export(d)
     profile={'schema':1,'kind':'free-my-tv-ui','settings':{'language':'ru','theme':'dark','sounds':False,'shelf':['io.freemytv'],'topButtons':['network','settings']}}
     actual=profiles.apply(d,profile)
