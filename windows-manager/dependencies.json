@@ -1,0 +1,15 @@
+{
+  "python": {
+    "url": "https://api.nuget.org/v3-flatcontainer/python/3.14.10/python.3.14.10.nupkg",
+    "sha256": "f54ba67c9951c3d773ea47d2bb095150c037c399f0423a968bcda22809241784"
+  },
+  "jre": {
+    "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_x64_windows_hotspot_17.0.20_8.zip",
+    "sha256": "7fe2324cc5901a89aaa0e8dc232075c59f2aca5270c533bdb1b861a5274af834"
+  },
+  "android": {
+    "url": "https://dl.google.com/android/repository/build-tools_r34-windows.zip",
+    "sha1": "62cfde1b6fcc3ad12a4d2ba1b537e752768bfd47",
+    "sha256": "9be665ad74ef22bf0e489b37db465074484df79b95f26d759945d5c25a47b326"
+  }
+}
