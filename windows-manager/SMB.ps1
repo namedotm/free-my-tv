@@ -10,7 +10,7 @@ function Save-State($s) {
     Move-Item -LiteralPath ($statePath+'.tmp') -Destination $statePath -Force
 }
 function Result($ok, $message) {
-    @{ok=$ok;message=$message;time=(Get-Date).ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath $resultPath -Encoding UTF8
+    @{ok=$ok;message=$message;request_id=$req.request_id;time=(Get-Date).ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath $resultPath -Encoding UTF8
     $icon = if($ok){[Windows.Forms.MessageBoxIcon]::Information}else{[Windows.Forms.MessageBoxIcon]::Error}
     [void][Windows.Forms.MessageBox]::Show($message, 'Xiaomi TV Manager', 'OK', $icon)
 }
@@ -61,6 +61,7 @@ try {
     if(Test-Path -LiteralPath $statePath) {
         $old=Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
         if(-not $old.restored) {
+            if([IO.Path]::GetFullPath($old.path).TrimEnd('\') -ne [IO.Path]::GetFullPath($req.folder).TrimEnd('\')){throw 'Ранее опубликована другая папка. Сначала восстановите созданные менеджером SMB-ресурсы или выберите прежнюю папку.'}
             Result $true ('Уже есть ресурс '+$old.share+'. Пароль не хранится в менеджере. Для другой папки или забытого пароля сначала используйте «Восстановить настройки SMB», затем создайте ресурс заново.')
             exit
         }
@@ -107,7 +108,7 @@ try {
     $cancel=New-Object Windows.Forms.Button;$cancel.SetBounds(310,240,270,38);$cancel.Text='Отмена';$cancel.DialogResult='Cancel';$f.Controls.Add($cancel)
     $f.CancelButton=$cancel
     do {
-        if($f.ShowDialog() -ne 'OK'){exit}
+        if($f.ShowDialog() -ne 'OK'){Result $false 'Создание общей папки отменено пользователем.';exit}
         $valid=$p.Text.Length -ge 14 -and $p.Text -ceq $p2.Text
         if(-not $valid){[void][Windows.Forms.MessageBox]::Show('Пароли должны совпадать и содержать не менее 14 символов.')}
     } until($valid)

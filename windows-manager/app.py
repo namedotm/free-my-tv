@@ -16,6 +16,8 @@ import urllib.parse
 import webbrowser
 import profiles
 import media
+import applications
+import repair
 
 from engine import (ROOT, DATA, Tools, Device, Problem, targets, read_json, save_json,
                     install_app, vpn_profile, run)
@@ -38,6 +40,8 @@ class Manager:
         self.source_profile = read_json(self.data / 'source-profile.json', None)
         self.source_status = 'Профиль проектора ещё не прочитан.'
         self.source_packages = []
+        self.app_plans = {}
+        self.app_last = read_json(self.data / 'last-app-changes.json', {})
         if self.source_profile is not None:
             try:
                 self.source_profile = profiles.validate(self.source_profile)
@@ -102,17 +106,21 @@ class Manager:
         if not isinstance(selected, list) or any(k not in self.catalog['apps'] and k not in ('mx', 'youtube') for k in selected):
             raise Problem('Неизвестное приложение.')
         action = payload.get('action')
-        if action not in ('check', 'install', 'retry', 'measure', 'profile', 'read_source', 'sync_ui', 'restore_ui', 'open_incy'):
+        if action not in ('check', 'install', 'retry', 'measure', 'profile', 'read_source', 'sync_ui', 'restore_ui', 'open_incy', 'diagnose_home', 'network_profile', 'existing_setup', 'open_media'):
             raise Problem('Неизвестное действие.')
         source_address = targets([payload.get('source_ip') or '192.168.28.60'])[0]
         if action == 'read_source':
             addresses = [source_address]
-        if action in ('sync_ui', 'restore_ui', 'open_incy'):
+        if action in ('sync_ui', 'restore_ui', 'open_incy', 'network_profile'):
             addresses = [a for a in addresses if a.split(':')[0] != source_address.split(':')[0]]
             if not addresses:
                 raise Problem('Для переноса выберите хотя бы одну приставку. Проектор-источник исключён из изменений.')
         options = {'source_ip': source_address, 'sync_ui': bool(payload.get('sync_ui')),
                    'protect_source': True}
+        if action in ('existing_setup', 'open_media'):
+            if payload.get('media_player', 'vlc') not in repair.PLAYERS:
+                raise Problem('Выберите плеер.')
+            options.update(folder=payload.get('folder'), ips=payload.get('ips'), media_player=payload.get('media_player', 'vlc'))
         if action == 'install' and not selected:
             raise Problem('Выберите хотя бы одно приложение для установки.')
         if action == 'retry':
@@ -138,6 +146,27 @@ class Manager:
     def work(self, addresses, selected, action, official, options=None):
         options = options or {}
         try:
+            if action in ('existing_setup', 'open_media'):
+                info = self.media_info(options)
+                if not info['ready'] and action == 'existing_setup':
+                    self.smb(options, allow_busy=True)
+                    deadline = time.monotonic() + 300
+                    with self.lock:
+                        self.message = 'Подтвердите UAC и задайте SMB-пароль в отдельном окне Windows. Установка приложений не выполняется.'
+                    while time.monotonic() < deadline:
+                        result = read_json(self.data / 'smb-result.json', {})
+                        if result.get('request_id') == self.smb_request_id:
+                            if not result.get('ok'):
+                                raise Problem(result.get('message', 'Создание SMB отменено.'), code='SMB_SETUP')
+                            break
+                        time.sleep(.5)
+                    else:
+                        raise Problem('Нет подтверждения создания SMB за 5 минут. Проверьте отдельное окно Windows; шаги на ТВ не выполнялись.', code='SMB_WAIT')
+                    info = self.media_info(options)
+                if not info['ready']:
+                    raise Problem('Сначала создайте SMB-папку Windows.', code='SMB_NOT_READY')
+                options['media'] = info
+                options['pc_tcp'] = repair.pc_port(info['server'])
             with ThreadPoolExecutor(max_workers=3) as pool:
                 list(pool.map(lambda a: self.device_work(a, selected, action, official, options), addresses))
             with self.lock:
@@ -147,6 +176,12 @@ class Manager:
                 errors = sum(r.get('status') == 'error' for r in self.rows.values())
                 warnings = sum(r.get('status') == 'warning' for r in self.rows.values())
                 self.message = f'Обработка завершена. Устройств с ошибками: {errors}; с пропусками или ручными шагами: {warnings}. Подробности — в карточках ниже.'
+        except Problem as exc:
+            for address in addresses:
+                self.update(address, status='error', code=exc.code, details=exc.details)
+                self.event(address, str(exc))
+            with self.lock:
+                self.message = str(exc)
         except Exception:
             with self.lock:
                 self.message = 'Ошибка сохранения результатов. Проверьте свободное место и права на папку data; устройства не удалялись и Home не менялся.'
@@ -170,7 +205,32 @@ class Manager:
                         report=str(folder.relative_to(self.data)), processed=0,
                         total_apps=len(selected) if action in ('install', 'retry') else 0)
             self.event(address, 'ADB подключён; диагностический отчёт сохранён')
-            if action == 'read_source':
+            if action == 'diagnose_home':
+                result = repair.diagnose_home(d, report)
+                save_json(folder / 'launcher-diagnosis.json', result)
+                self.update(address, launcher_diagnosis=result)
+                apps['home_diagnosis'] = {'status':'manual' if result['wifi_owner_blockers'] else 'done', 'message':result['explanation'] if result['wifi_owner_blockers'] else 'Диагностика сохранена. Владельцы Wi-Fi не изменялись; Home не переключался.'}
+            elif action == 'network_profile':
+                before, actual = repair.network_profile(d)
+                save_json(folder / 'ui-before.json', before)
+                save_json(folder / 'ui-after.json', actual)
+                apps['ui_profile'] = {'status':'done','message':'Русский язык и кнопка сети применены и проверены. Избранное сохранено; Home не переключался.'}
+            elif action in ('existing_setup', 'open_media'):
+                if action == 'existing_setup' and address.split(':')[0] != options.get('source_ip','').split(':')[0]:
+                    try:
+                        before, actual = repair.network_profile(d)
+                        save_json(folder / 'ui-before.json', before)
+                        save_json(folder / 'ui-after.json', actual)
+                        apps['ui_profile'] = {'status':'done','message':'Кнопка сети и русский язык применены. Установка APK не выполнялась.'}
+                    except Problem as exc:
+                        apps['ui_profile'] = {'status':'manual','message':str(exc),'code':exc.code}
+                info = options['media']
+                tcp = repair.tv_port(d, info['server'])
+                result = repair.handoff(d, options['media_player'], info['uri']) if tcp['status'] != 'error' else {'status':'error','message':tcp['message']}
+                save_json(folder / 'media-handoff.json', {'media':info,'pc_tcp':options['pc_tcp'],'tv_tcp':tcp,'player':result,'source_saved':False,'authenticated_read_verified':False})
+                self.update(address, media_result={'media':info,'pc_tcp':options['pc_tcp'],'tv_tcp':tcp,'player':result})
+                apps['media'] = result
+            elif action == 'read_source':
                 activities = d.shell('cmd', 'package', 'query-activities', '--brief', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LEANBACK_LAUNCHER', check=False)
                 candidates = sorted(set(re.findall(r'^([A-Za-z][A-Za-z0-9_.]+)/[A-Za-z0-9_.$]+$', activities, re.M)))
                 with self.lock:
@@ -290,6 +350,8 @@ class Manager:
                             'message': 'UI-профиль перенесён, избранное объединено и проверено. Home не менялся.' + (' Не установлены пакеты: ' + ', '.join(missing) if missing else '')})
                     self.update(address, total_apps=len(selected) + 1, processed=len(selected) + 1)
                     save_json(folder / 'install.json', apps)
+            if action in ('diagnose_home','network_profile','existing_setup','open_media'):
+                self.update(address,total_apps=len(apps),processed=len(apps))
             after = d.measures()
             save_json(folder / 'after.json', after)
             # Observed deltas are not a benchmark: devices/apps may be doing different work.
@@ -357,11 +419,88 @@ class Manager:
         return run(['powershell.exe', '-NoProfile', '-STA', '-Command',
                     "Add-Type -AssemblyName System.Windows.Forms; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='Выберите папку с фильмами'; if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.SelectedPath)}"], timeout=300)
 
-    def smb(self, payload, restore=False):
+    def manage_apps(self, payload):
+        mode = payload.get('mode')
+        address = targets([payload.get('address', '')])[0]
+        if mode not in ('scan','plan','apply','undo','settings'):
+            raise Problem('Неизвестная операция приложений.')
+        with self.lock:
+            if self.busy:
+                raise Problem('Дождитесь завершения текущего шага.')
+            self.busy = True
+            self.message = 'Работа со списком приложений: ' + mode
+        try:
+            d = Device(address, self.tools)
+            report = d.diagnose()
+            rows = applications.inventory(d)
+            if mode == 'scan':
+                return {'rows':rows,'address':address,'model':report['model'], 'message':'Список прочитан. Системные и критические компоненты защищены. Удалённые записи — только те, которые Android ещё хранит.'}
+            if mode == 'settings':
+                pkg = payload.get('package', '')
+                if pkg not in {r['package'] for r in rows if r['installed']}:
+                    raise Problem('Приложение не установлено.')
+                out = d.shell('am','start','-a','android.settings.APPLICATION_DETAILS_SETTINGS','-d','package:'+pkg)
+                if re.search(r'Error:|Exception', out):
+                    raise Problem('Android не открыл карточку приложения.', details=out)
+                return {'message':'На ТВ открыта системная карточка приложения. Менеджер ничего не удалил и не очищал.'}
+            if mode == 'plan':
+                chosen = applications.validate_selection(rows,payload.get('operation'),payload.get('packages'))
+                states = {r['package']:applications.enabled_state(d,r['package']) for r in chosen} if payload['operation'] != 'restore' else {}
+                key = secrets.token_urlsafe(24)
+                self.app_plans = {key:{'expires':time.time()+180,'identity':report['identity'],'address':address,'action':payload['operation'],'packages':[r['package'] for r in chosen],'rows':chosen,'states':states}}
+                return {'plan':key,'packages':[r['package'] for r in chosen],'operation':payload['operation'],
+                        'message':'План ещё не выполнен. Удаление: только APK стороннего приложения, с сохранением данных (-k) и предварительной проверенной копией APK. Системные APK не затрагиваются. Отключение не освобождает место APK. Откат не является полной резервной копией данных.'}
+            folder = self.data/'reports'/address.replace(':','_')/str(time.time_ns())
+            before = {'free_bytes':d.free_space(),'measures':d.measures()}
+            if mode == 'apply':
+                plan = self.app_plans.pop(payload.get('plan'), None)
+                if not plan or plan['expires'] < time.time() or plan['address'] != address or plan['identity'] != report['identity']:
+                    raise Problem('План устарел или относится к другому ТВ. Обновите список.',code='APP_PLAN')
+                chosen = applications.validate_selection(rows,plan['action'],plan['packages'])
+                states = {r['package']:applications.enabled_state(d,r['package']) for r in chosen} if plan['action'] != 'restore' else {}
+                if chosen != plan['rows'] or states != plan['states']:
+                    raise Problem('Состояние приложений изменилось после просмотра плана.',code='APP_PLAN')
+                save_json(folder/'before.json',report)
+                # Register the journal location before mutations so a partial failure is reviewable.
+                history = self.app_last.setdefault(address, [])
+                history.append(str(folder.relative_to(self.data)))
+                save_json(self.data/'last-app-changes.json',self.app_last)
+                changes = applications.execute(d,report,plan['action'],plan['packages'],folder)
+            else:
+                history = self.app_last.get(address, [])
+                relative = history[-1] if history else None
+                if not relative:
+                    raise Problem('Нет операции этого менеджера для отмены.')
+                folder = (self.data/relative).resolve()
+                if not folder.is_relative_to(self.data.resolve()):
+                    raise Problem('Неверный путь журнала отмены.')
+                changes = read_json(folder/'app-changes.json')
+                if not changes:
+                    raise Problem('Журнал не создан: изменения не начинались.')
+                restored = applications.rollback(d,report,changes,folder)
+                changes = {**changes,'restored_packages':restored}
+                if all(e.get('restored') or e['status']=='planned' for e in changes['entries']):
+                    history.pop()
+                    save_json(self.data/'last-app-changes.json',self.app_last)
+            after = {'free_bytes':d.free_space(),'measures':d.measures()}
+            measurement = applications.metrics(before,after)
+            save_json(folder/('undo-measurements.json' if mode=='undo' else 'measurements.json'),measurement)
+            with self.lock:
+                self.message = 'Операция завершена. Результаты подтверждены отдельно для каждого приложения; смотрите отчёт.'
+            return {'rows':applications.inventory(d),'address':address,'changes':changes,'metrics':measurement,'message':self.message}
+        except Problem as exc:
+            with self.lock:
+                self.message = str(exc)
+            raise
+        finally:
+            with self.lock:
+                self.busy = False
+
+    def smb(self, payload, restore=False, allow_busy=False):
         if os.name != 'nt':
             raise Problem('Настройка SMB доступна только на Windows 10/11 x64.')
         with self.lock:
-            if self.busy:
+            if self.busy and not allow_busy:
                 raise Problem('Дождитесь завершения работы с устройствами.')
         path = payload.get('folder', '')
         if not restore:
@@ -371,7 +510,8 @@ class Manager:
         if not restore and (not path or not Path(path).is_dir()):
             raise Problem('Сначала выберите существующую локальную папку Windows.')
         ips = [] if restore else [x.split(':')[0] for x in targets(payload.get('ips', []))]
-        request = {'folder': path, 'ips': ips, 'data': str(self.data.resolve()), 'restore': restore}
+        self.smb_request_id = secrets.token_hex(16)
+        request = {'folder': path, 'ips': ips, 'data': str(self.data.resolve()), 'restore': restore, 'request_id':self.smb_request_id}
         request_path = self.data / 'smb-request.json'
         save_json(request_path, request)  # No password. Password is entered only in the elevated native dialog.
         script = str(ROOT / 'SMB.ps1').replace("'", "''")
@@ -445,6 +585,8 @@ def make_handler(manager, token):
                     message = manager.save_manual_profile(payload.get('profile'))
                 elif self.path == '/media-info':
                     return self.send(200, json.dumps({'media': manager.media_info(payload)}, ensure_ascii=False))
+                elif self.path == '/apps':
+                    return self.send(200, json.dumps(manager.manage_apps(payload), ensure_ascii=False))
                 else:
                     return self.send(404, '{}')
                 self.send(200, json.dumps({'message': message}, ensure_ascii=False))

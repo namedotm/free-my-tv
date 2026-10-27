@@ -5,8 +5,16 @@
 <label>Mi Box S EU №1<input id="ip1" placeholder="Введите IP или IP:порт"></label>
 <label>Mi Box S EU №2<input id="ip2" placeholder="Введите IP или IP:порт"></label></div>
 <p class="hint">ADB: C:\platform-tools\adb.exe. На ТВ включите отладку и разрешите подключение этому компьютеру. Пустые поля пропускаются.</p>
-<div class="buttons"><button id="check">Проверить подключения</button><button id="measure">Замерить запуск VLC</button><button id="retry">Повторить неудачные шаги</button></div>
+<div class="buttons"><button id="check">Проверить подключения</button><button id="measure">Замерить запуск VLC</button><button id="retry">Повторить неудачные шаги</button><button id="diagnose_home">Почему не включается Free My TV?</button><button id="network_profile">Применить русский язык и кнопку сети</button></div>
 <div id="summary" class="summary" role="status"></div><div id="devices" aria-live="polite"></div></section>
+<section><h2>Управление установленными приложениями</h2>
+<p>Полный список пакетов для выбранного ТВ, включая отключённые и удалённые записи, которые ещё хранит Android. Системные и критические компоненты защищены. Само сканирование ничего не очищает.</p>
+<div class="devices"><label>Устройство<select id="apps-device"><option value="0">Проектор — первое поле IP</option><option value="1" selected>Приставка №1 — второе поле IP</option><option value="2">Приставка №2 — третье поле IP</option></select></label><label>Поиск<input id="apps-search" placeholder="Название или package name"></label><label>Показать<select id="apps-filter"><option value="all">Все</option><option value="third">Сторонние</option><option value="system">Системные / защищённые</option><option value="disabled">Отключённые</option><option value="removed">Удалённые записи Android</option><option value="candidates">Кандидаты по имени — не рекомендация</option></select></label></div>
+<div class="buttons"><button id="apps-scan">Прочитать список приложений</button><button id="apps-undo">Отменить последнюю операцию приложений</button></div>
+<p id="apps-status" role="status">Список ещё не прочитан.</p><div id="apps-list"></div>
+<label>Действие для отмеченных пакетов<select id="apps-operation"><option value="disable">Отключить сторонние — обратимо, APK остаётся</option><option value="enable">Включить отключённые сторонние</option><option value="uninstall_keep_data">Удалить сторонние APK для пользователя 0, сохранить данные и копию APK</option><option value="restore">Вернуть удалённую запись, если APK ещё есть в Android</option></select></label>
+<button id="apps-plan">Показать точный план и подтвердить</button><div id="apps-result" aria-live="polite"></div>
+<p class="hint">Кэш и данные приложений не очищаются. Отключение не освобождает место APK. Удаление системных APK, отключение сети, Cast, DRM, служб изображения и безопасности запрещены. Карточка «Настройки на ТВ» позволяет отдельно посмотреть объём приложения и кэша штатными средствами.</p></section>
 <section><h2>Приложения</h2><p>Free My TV, INCY, SmartTube, VLC и ByeByeDPI скачиваются и устанавливаются как APK автоматически. Vimu: автоматически устанавливается официальный Installer, затем установка плеера подтверждается на ТВ. MX Player пока устанавливается через официальный магазин.</p><div class="choices">
 <label><input type="checkbox" name="app" value="freemytv">Free My TV · кнопка сети</label>
 <label><input type="checkbox" name="app" value="incy">INCY · официальный Android/TV APK</label><label><input type="checkbox" name="app" value="youtube">YouTube · проверить наличие / открыть Google Play</label>
@@ -42,8 +50,11 @@
 <label><input id="share" type="checkbox">После установки создать SMB-папку и правило брандмауэра для указанных IP</label>
 <p class="hint">Отдельное окно Windows попросит UAC и пароль новой учётной записи. Только чтение, SMB2/3, без SMB1 и гостей. Пароль не попадает в конфигурацию или журнал.</p>
 <div class="buttons"><button id="media-info">Как подключить папку в плеерах</button><button id="smb">Настроить общую папку</button><button id="restore">Восстановить настройки SMB</button></div>
+<label>Плеер для открытия папки на ТВ<select id="media-player"><option value="vlc">VLC</option><option value="vimu">Vimu</option><option value="mx">MX Player</option></select></label>
+<div class="buttons"><button id="existing_setup">НАСТРОИТЬ УЖЕ УСТАНОВЛЕННОЕ: Windows + профиль + папка</button><button id="open_media">Проверить доступ с ТВ и передать адрес плееру</button></div>
+<p class="warning">APK в этом режиме не устанавливаются. Профиль применяется только к приставкам, проектор-источник защищён. Адрес передаётся выбранному плееру, если он принимает SMB Intent. Авторизация и сохранение источника могут потребовать действий на ТВ; успех запуска плеера не равен доступу к файлам.</p>
 <div id="media-result" aria-live="polite"></div><p>Восстановление удаляет только созданные менеджером общий ресурс, правило брандмауэра, разрешение чтения и его учётную запись. Приложения и файлы фильмов не удаляются. Настройки приложений восстанавливаются вручную из их собственного экспорта.</p></section>
-<section class="install"><button id="install">УСТАНОВИТЬ НА ВСЕ УСТРОЙСТВА</button><p id="status" role="status">Загрузка интерфейса…</p></section>
+<section class="install"><button id="install">УСТАНОВИТЬ ВЫБРАННЫЕ APK</button><p id="status" role="status">Загрузка интерфейса…</p></section>
 <section><h2>Журнал</h2><pre id="log" aria-live="polite"></pre><p class="hint">Полные отдельные отчёты и резервные APK находятся в windows-manager/data/reports; журналы — в data/logs. Они остаются на этом компьютере.</p></section>
 <footer>Проверка подключений не устанавливает приложения и не меняет настройки ТВ. Замер запуска открывает VLC на экране; холодный запуск и ускорение не гарантируются. Совместимость Windows и реальных ТВ требует первого пользовательского теста.</footer>
 </main></body></html>

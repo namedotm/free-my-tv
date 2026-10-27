@@ -314,6 +314,13 @@ class Device:
         result['process_count'] = max(0, len(result['processes'].splitlines()) - 1)
         return result
 
+    def identity(self, props=None):
+        props = props or {k:self.prop(k) for k in ('ro.serialno','ro.build.fingerprint','ro.product.model')}
+        android_id = self.shell('settings','get','secure','android_id').strip()
+        if android_id in ('', 'null') and props['ro.serialno'] in ('','unknown','null'):
+            raise Problem('Нет устойчивого идентификатора устройства. Изменения запрещены.', code='DEVICE_IDENTITY')
+        return hashlib.sha256(('\n'.join([props['ro.serialno'], props['ro.build.fingerprint'], props['ro.product.model'], android_id])).encode()).hexdigest()
+
     def diagnose(self):
         self.connect()
         props = {k: self.prop(k) for k in ['ro.product.model', 'ro.product.manufacturer',
@@ -326,10 +333,10 @@ class Device:
         packages = self.packages()
         versions = self.shell('dumpsys', 'package', 'packages')
         abi = props['ro.product.cpu.abilist'] or props['ro.product.cpu.abi']
-        identity = hashlib.sha256((props['ro.serialno'] + props['ro.build.fingerprint'] + props['ro.product.model']).encode()).hexdigest()
+        identity = self.identity(props)
         return {'address': self.address, 'properties': props, 'model': props['ro.product.model'],
                 'android': props['ro.build.version.release'], 'api': api, 'abis': abi.split(','),
-                'identity': identity, 'packages': packages, 'versions': versions,
+                'identity': identity, 'identity_kind':'android-id+serial', 'packages': packages, 'versions': versions,
                 'free_bytes': self.free_space(), 'before': self.measures(),
                 'recommendations': self.recommendations(packages)}
 

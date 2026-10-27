@@ -35,6 +35,8 @@ def plan(info,state=None):
     else:
         if not state or state.get('restored') or ntpath.normcase(ntpath.normpath(state.get('path',''))) != ntpath.normcase(ntpath.normpath(info['path'])):
             return {**result,'ready':False,'note':'Это локальная папка. Нажмите «Настроить общую папку», затем снова «Как подключить в плеерах». В ТВ вводится SMB-сервер и имя ресурса, а не W:\\.intake.'}
+        if info.get('shares') is not None and not any(s.get('Name')==state.get('share') and ntpath.normcase(ntpath.normpath(s.get('Path','')))==ntpath.normcase(ntpath.normpath(info['path'])) for s in info['shares']):
+            return {**result,'ready':False,'note':'Сохранён журнал SMB, но реальный общий ресурс Windows отсутствует или указывает на другую папку. Проверьте общий ресурс; восстановление удаляет только ресурсы этого менеджера.'}
         addresses=info.get('addresses') or state.get('addresses') or []
         server=addresses[0] if addresses else state.get('server') or info['computer']
         share=state['share'];subfolder='';user=(state.get('server') or info['computer'])+'\\'+state['account']
